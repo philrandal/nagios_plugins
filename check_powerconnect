@@ -232,9 +232,9 @@ function CheckTemps () {
 	local TEMP_OID=""
 
 	# Determine which OID tree is using the temperatures
-	local DELL_STATUS=$(snmpwalk -v 2c -On -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.5000.2.89.53.15.1.10 2>/dev/null)
-	local FASTPATH_STATUS=$(snmpwalk -v 2c -On -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.43.1.8.1.3 2>/dev/null)
-	local RADLAN_STATUS=$(snmpwalk -v 2c -On -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.89.53.15.1.10 2>/dev/null)
+	local DELL_STATUS=$(snmpwalk -v 2c -Onq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.5000.2.89.53.15.1.10 2>/dev/null)
+	local FASTPATH_STATUS=$(snmpwalk -v 2c -Onq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.43.1.8.1.3 2>/dev/null)
+	local RADLAN_STATUS=$(snmpwalk -v 2c -Onq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.89.53.15.1.10 2>/dev/null)
 
 	# snmpwalk doesn't behave w/r/t exit code and stderr, so just check for "no such object at this oid"
 	if [ "$DELL_STATUS" != *OID* ]; then
@@ -252,7 +252,7 @@ function CheckTemps () {
 		TEMP_OID=.1.3.6.1.4.1.89.53.15.1.9
 	fi
 
-	local TEMP_VALUES=$(snmpwalk -v 2c -On -c $COMMUNITY $HOST_NAME $TEMP_OID 2>/dev/null)
+	local TEMP_VALUES=$(snmpwalk -v 2c -Onq -c $COMMUNITY $HOST_NAME $TEMP_OID 2>/dev/null)
 	local TEMP_IDS=$(echo ${TEMP_VALUES/$TEMP_OID./} | awk '{print $1}')
 
 	for TEMP_ID in $(echo "$TEMP_IDS")
