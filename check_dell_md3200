@@ -214,7 +214,7 @@ $perfTotalsC = array(); $pbComp = array(); $currComp = ""; $pbBatt = array(); $c
 
 $arrayVDName = array(); $countVDName = 0;
 $nbKeysPerf = 0; $totalPower = 0; $powerInfos = array();
-$perfSection = false; $summSection = false; $powerSection = false;
+$perfSection = false; $summSection = false; $powerSection = false; $hsSection = false;
 $clockInSync = true; $badSectors = true; $failures = false; $failInfo = "";
 
 for($i=0;$i<count($strLines);$i++){
@@ -284,21 +284,21 @@ for($i=0;$i<count($strLines);$i++){
 	}
 	//Retrieves the preferred path
 	if($path && preg_match($regVDPathPref, $strLines[$i], $mPathPref)) {
-		$perfSection = false; $summSection = false; $powerSection = false;
+		$perfSection = false; $summSection = false; $powerSection = false; $hsSection = false;
 		$arrayPath[$VDName]['Pref'] = $mPathPref[1];
 	}
 	//Retrieves the current path
 	if($path && preg_match($regVDPathCurr, $strLines[$i], $mPathCurr)) {
-		$perfSection = false; $summSection = false; $powerSection = false;
+		$perfSection = false; $summSection = false; $powerSection = false; $hsSection = false;
 		$arrayPath[$VDName]['Curr'] = $mPathCurr[1];
 	}
 	//Set beginning of performance section
 	if($perf && preg_match($regVDPerfSection, $strLines[$i]) == 1) {
-		$perfSection = true; $summSection = false; $powerSection = false;
+		$perfSection = true; $summSection = false; $powerSection = false; $hsSection = false;
 	}
 	//Set beginning of summary section
 	if(preg_match($regVDSummSection, $strLines[$i]) == 1) {
-		$perfSection = false; $summSection = true; $powerSection = false;
+		$perfSection = false; $summSection = true; $powerSection = false; $hsSection = false;
 	}
 	//retrieves the header names of the virtual disks perf values
 	if($perfSection && preg_match($regVDPerfHeader, $strLines[$i])) {
