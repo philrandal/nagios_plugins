@@ -244,15 +244,15 @@ if ($hotspare) {
     $cmds[] = "show storagearray hotsparecoverage";
 }
 
-$cmds = escapeshellarg(implode(";", $cmds));
-$cmd = "$smcli $ctrl1 $ctrl2 -S -c \"$cmds\"";
+$cmds = escapeshellarg(implode(";", $cmds) . ";");
+$cmd = "$smcli $ctrl1 $ctrl2 -S -c $cmds";
 exec($cmd, $strLines, $exitcode);
 
 if ($debug ) {
-    print "CMD: $cmd";
+    print "CMD: $cmd\n";
     print "----------------- smcli  dump -----------------\n";
-    print implode("\n", $res);
-    print "----------------- end of dump -----------------\n";
+    print implode("\n", $strLines);
+    print "\n----------------- end of dump -----------------\n";
 }
 
 $VDName = "";
