@@ -13,7 +13,7 @@ $argAdd = "";$argDel = "";
 //options
 $path = false;$info = false;$perf = false;$otot = false;$ntot = false;$summ=false;
 $battery = false; $health = false; $sectors = false; $power = false; $debug = false;
-$mode =""; $noout = false;
+$mode =""; $noout = false; $hotspare = false;
 $md3000 = false; $ping = true;
 //output
 $output_msg = "";
@@ -101,6 +101,10 @@ for ($i = 1; $i < $_SERVER['argc']; $i++) {
 		case '--vd':
 			$vd = check_command_line_option($_SERVER["argv"][$i], $i);
 		break;
+
+		case '--hotspare':
+			$hotspare = true;
+		break;
 	}
 }
 
@@ -129,6 +133,10 @@ if ($md3000) {
 	$regVDPerfHeader = "/Objects/";
 	$regVDSummValues = "/[A-Z,a-z,0-9]+[ ]+[A-Z,a-z]+[ ]+[A-Z,a-z]+[ ]+[0-9\,\.]+/";
 }
+//Hot spare regular expressions
+$regHsSection = '/Total hot spare physical disks:\s+(\d+)/';
+$regHsStandby = '/Standby:\s+(\d+)/';
+$regHsInuse = '/In use:\s+(\d+)/';
 
 //turn the argument into regex match chains
 if ($argAdd != ""){
@@ -162,7 +170,7 @@ if ($debug) {
 }
 
 if($health) { //if the global health is asked for, then check the battery, the sectors, the power, ...
-	$battery = true; $sectors = true; $power = true; $summ = true; $path = true;
+	$battery = true; $sectors = true; $power = true; $summ = true; $path = true; $hotspare = true;
 }
 if($md3000) $power = false;
 
@@ -302,6 +310,19 @@ for($i=0;$i<count($strLines);$i++){
 		$tmpPerfValues = explode (',', str_replace('"','',$strLines[$i]));
 		$perfValues[$mVDID[1]] = $tmpPerfValues;
 	}
+	//Set beginning of hot spare section and retrieve total
+	if (preg_match($regHsSection, $strLines[$i], $mHsTotal) == 1) {
+		$perfSection = false; $summSection = false; $powerSection = false; $hsSection = true;
+		$hsValues["total"] = $mHsTotal[1];
+	}
+	//Retrieves the number of hot spares in standby mode
+	if($hsSection && preg_match($regHsStandby, $strLines[$i], $mHsStandby) == 1) {
+		$hsValues["standby"] = $mHsStandby[1];
+	}
+	//Retrieves the number of hot spares in use         
+	if($hsSection && preg_match($regHsInuse, $strLines[$i], $mHsInuse) == 1) {
+		$hsValues["inuse"] = $mHsInuse[1];
+	}
 }
 
 // create the information part of the output
@@ -382,6 +403,56 @@ if ($summ) {
 		$infos .= "NON Optimal VD: ".$tmpInfos." - ";
 	} else {
 		$infos .= "All VD Optimal - ";
+	}
+}
+if ($hotspare) {
+	$tmpInfos = "";
+	if (isset($hsValues["total"])) {
+		if ($hsValues["total"] < 1) {
+			$state = 'CRITICAL';
+			$exit_code = $exit_E;
+			if (debug) print "critical due to no hot spares \n";
+			if ($tmpInfos != "") $tmpInfos.= ', ';
+			$tmpInfos .= "Total: $hsValues[total]";
+		}
+	} else {
+		$state = 'UNKNOWN';
+		$exit_code = $exit_U;
+		if ($tmpInfos != "") $tmpInfos.= ', ';
+		$tmpInfos .= "Total: unknown";
+	}
+	if (isset($hsValues["inuse"])) {
+		if ($hsValues["inuse"] > 0 && $exit_code != $exit_E) {
+			$state = 'WARNING';
+			$exit_code = $exit_W;
+			if (debug) print "warning due to hot spare in use \n";
+			if ($tmpInfos != "") $tmpInfos.= ', ';
+			$tmpInfos .= "In use: $hsValues[total]";
+		}
+	} else {
+		$state = 'UNKNOWN';
+		$exit_code = $exit_U;
+		if ($tmpInfos != "") $tmpInfos.= ', ';
+		$tmpInfos .= "In use: unknown";
+	}
+	if (isset($hsValues["standby"])) {
+		if ($hsValues["standby"] < 1) {
+			$state = 'CRITICAL';
+			$exit_code = $exit_E;
+			if (debug) print "critical due to no hot spare standbys \n";
+			if ($tmpInfos != "") $tmpInfos.= ', ';
+			$tmpInfos .= "Standby: $hsValues[total]";
+		}
+	} else {
+		$state = 'UNKNOWN';
+		$exit_code = $exit_U;
+		if ($tmpInfos != "") $tmpInfos.= ', ';
+		$tmpInfos .= "Standby: unknown";
+	}
+	if (empty($tmpInfos)) {
+		$infos .= "Hot spare status OK - ";
+	} else {
+		$infos .= "Hot spare status NOT OK: $tmpInfos - ";
 	}
 }
 if ($health) {
@@ -487,6 +558,11 @@ if ($power) {
 
 $perf_data = str_replace(" ","_",$output_msg); //replaces the space in the labels
 
+if ($perf && $hotspare && isset($hsValues)) {
+	if ($perf_data !== "") $perf_data .= " ";
+	$perf_data .= "hotspare_total=$hsValues[total] hotspare_standby=$hsValues[standby] hotspare_used=$hsValues[inuse]";
+}
+
 if($failures && $health) {
 	$output_msg = "$state - $infos - $failInfo - ".$output_msg;
 } else {
@@ -542,6 +618,7 @@ Usage: $progname -H <hostname> --username <username> --password <password>
        [--port <port> | --instance <instance>] [--database <database>] 
        [--storeproc <"text">] 
        [--warning <warning_syntax>] [--critical <critical_syntax>] [--help] [--version]
+
 EOF;
 }
 
@@ -583,8 +660,10 @@ Options:
 	output power info - can be graphed
  --sectors
 	check if there are any bad sectors detected
+ --hotspares
+ 	check the state of hot spares in the array - can be graphed
  --health
-	check battery, power, sectors, path, ...
+	check battery, power, sectors, path, hot spares...
  -ot
  --only-totals
 	output only totals, and sub totals with --path
@@ -605,6 +684,7 @@ Options:
     Print detailed help screen.
  --vd
 	Not implemented
+
 EOF;
 exit(0);
 }
