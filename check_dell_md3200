@@ -232,7 +232,7 @@ if ($perf && $mode == "virtualdisks") {
     $cmds[] = "show allvirtualdisks performancestats";
 }
 if ($sectors) {
-    $cmds[] = "show \"$progname sectors\""
+    $cmds[] = "show \"$progname sectors\"";
     $cmds[] = "show storagearray unreadablesectors";
 }
 if ($power) {
