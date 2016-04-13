@@ -195,6 +195,9 @@ if ($sectors) {
 if ($power) {
 	$show .= "show storagearray powerinfo;";
 }
+if ($hotspare) {
+	$show .= "show storagearray hotsparecoverage;";
+}
 
 $cmd = "$base \"$show\"";
 $res = shell_exec($cmd);
@@ -256,7 +259,7 @@ for($i=0;$i<count($strLines);$i++){
 	//Set beginning of power infos
 	if($power && preg_match($regSAPowerInfoSection, $strLines[$i], $mTP)) {
 		$totalPower = $mTP[1];
-		$perfSection = false; $summSection = false; $powerSection = true;
+		$perfSection = false; $summSection = false; $powerSection = true; $hsSection = false;
 	}
 	//Retrieves power information
 	if($power && preg_match($regSAPowerInfos, $strLines[$i], $mPI)) {
@@ -463,14 +466,15 @@ if ($health) {
 		print_r($arrayPath);
 		print "------------- end of path debug --------------\n";
 	}
-	for ($i = 0; $i < count($arrayVDName); $i++){
-		if( $arrayPath[$arrayVDName[$i]]['Pref'] != $arrayPath[$arrayVDName[$i]]['Curr'] ) {
+	foreach ($arrayVDName as $i=>$vdName){
+		if (!isset($arrayPath[$vdName])) continue;
+		if( $arrayPath[$vdName]['Pref'] != $arrayPath[$vdName]['Curr'] ) {
 			if($exit_code != $exit_E) {
 				$state = 'WARNING';
 				$exit_code = $exit_W;
 			}
 			if ($tmpInfos != "") $tmpInfos.= ', ';
-			$tmpInfos .= $arrayVDName[$i];
+			$tmpInfos .= $vdName;
 		}
 	}
 	if ($tmpInfos != "") {
