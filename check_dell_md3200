@@ -45,24 +45,24 @@ $output_msg = "";
 
 //Regular expressions
 //Storage array regular expressions
-$regSAHealthComponent = "/Component reporting problem: ([A-Z,a-z,0-9, ]+)/";
-$regSAHealthStatus = "/Status: ([A-Z,a-z,0-9, ]+)/";
-$regSABatteryStatus = "/Battery status: ([A-Z,a-z,0-9, ]+)/";
-$regSABatteryLocation = "/Location: RAID Controller Module in slot ([0-9])/";
-$regSAPowerInfoSection = "/Total power drawn: ([0-9]+)/";
-$regSAPowerInfos = "/([0-9]+)\s+([0-9]+)\s+([0-9]+) Watts/";
+$regSAHealthComponent = "/Component reporting problem: ([\w -]+)/";
+$regSAHealthStatus = "/Status: ([\w -]+)/";
+$regSABatteryStatus = "/Battery status: ([\w -]+)/";
+$regSABatteryLocation = "/Location: RAID Controller Module in slot (\d+)/";
+$regSAPowerInfoSection = "/Total power drawn: (\d+)/";
+$regSAPowerInfos = "/(\d+)\s+(\d+)\s+(\d+) Watts/";
 
 //Virtual disks regular expressions
-$regVDName = "/Virtual Disk name: ([A-Z,a-z,0-9,\-]+)/";
-$regVDPathPref = "/Preferred owner is RAID controller module in slot: ([A-Z,a-z,0-9,\-]+)/";
-$regVDPathCurr = "/Current owner is RAID controller module in slot: ([A-Z,a-z,0-9,\-]+)/";
-$regVDPerfValues = "/Virtual Disk ([A-Z,a-z,0-9_]+)/";
+$regVDName = "/Virtual Disk name: ([\w-]+)/";
+$regVDPathPref = "/Preferred owner is RAID controller module in slot: ([\w-]+)/";
+$regVDPathCurr = "/Current owner is RAID controller module in slot: ([\w-]+)/";
+$regVDPerfValues = "/Virtual Disk ([\w-]+)/";
 if ($md3000) {
     $regVDPerfHeader = "/\"Storage Arrays \"/";
-    $regVDSummValues = "/[A-Z,a-z,0-9]+[ ]+[A-Z,a-z]+[ ]+[0-9\,\.]+/";
+    $regVDSummValues = "/[\w-]+ +[a-z]+ +[\d,.]+/i";
 } else {
     $regVDPerfHeader = "/Objects/";
-    $regVDSummValues = "/[A-Z,a-z,0-9]+[ ]+[A-Z,a-z]+[ ]+[A-Z,a-z]+[ ]+[0-9\,\.]+/";
+    $regVDSummValues = "/[\w-]+ +[a-z]+ +[a-z]+ +[\d,.]+/";
 }
 
 //Hot spare regular expressions
