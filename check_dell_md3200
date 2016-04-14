@@ -6,14 +6,14 @@ $progname = "check_dell_md3200";
 $smcli = "/opt/dell/mdstoragesoftware/mdstoragemanager/client/SMcli";
 
 //Exit codes
-$exit_OK = 0;
-$exit_W = 1;
-$exit_E = 2;
-$exit_U = 3;
+define("OK", 0);
+define("WARNING", 1);
+define("CRITICAL", 2);
+define("UNKNOWN", 3);
 $exit_code = 0;
 
 $shortopts = "a:r:";
-$longopts = ["help", "c1:", "c2:", "mode:", "debug-no", "debug", "md3000", "battery", "power", "sectors", "hotspare", "health", "only-totals", "no-totals", "summary", "path", "perf", "vd", "no-ping-check"];
+$longopts = ["help", "c1:", "c2:", "debug-no", "debug", "md3000", "battery", "power", "sectors", "hotspare", "health", "only-totals", "no-totals", "summary", "path", "perf", "vd", "no-ping-check"];
 $opts = getopt($shortopts, $longopts);
 
 if (isset($opts["help"])) {
@@ -23,7 +23,6 @@ if (isset($opts["help"])) {
 //options
 $ctrl1 = isset($opts["c1"]) ? $opts["c1"] : "";
 $ctrl2 = isset($opts["c2"]) ? $opts["c2"] : "";
-$mode = isset($opts["mode"]) ? $opts["mode"] : "";
 $path = isset($opts["path"]);
 $perf = isset($opts["perf"]);
 $otot = isset($opts["only-totals"]);
@@ -34,7 +33,6 @@ $health = isset($opts["health"]);
 $sectors = isset($opts["sectors"]);
 $power = isset($opts["power"]);
 $debug = isset($opts["debug"]);
-$mode = isset($opts["mode"]) ? $opts["mode"] : "";
 $noout = isset($opts["debug-no"]);
 $hotspare = isset($opts["hotspare"]);
 $md3000 = isset($opts["md3000"]);
@@ -72,42 +70,27 @@ $regHsSection = "/Total hot spare physical disks:\s+(\d+)/";
 $regHsStandby = "/Standby:\s+(\d+)/";
 $regHsInuse = "/In use:\s+(\d+)/";
 
-//sets default exit / state info to unknown. So if a path forgets to set it, it is set to unknown by default.
-$state = "UNKNOWN";
-$exit_code = $exit_U;
-
 //check if controllers can be reached
-if ($ping) {
-    if ($ctrl1 && !isAlive($ctrl1)) {
-        //remove if not alive
-        $ctrl1 = "";
-    }
-    if ($ctrl2 && !isAlive($ctrl2)) {
-        //remove if not alive
-        $ctrl2 = "";
-    }
+if (!ping_check($ctrl1)) {
+    $ctrl1 = "";
 }
+if (!ping_check($ctrl2)) {
+    $ctrl2 = "";
+}
+
 //exit if none of the controllers are reachable
-if (!$ctrl1 || !$ctrl2) {
-    display_output($exit_code, "UNKNOWN - unable to reach either controller");
+if (!$ctrl1 && !$ctrl2) {
+    set_exit(UNKNOWN);
+    display_output("UNKNOWN - unable to reach either controller");
 }
 
 //parsing section
 $cmds = array();
 
-if ($debug) {
-    //$mode = "virtualdisks";
-    $perf = true;
-    $summ = true;
-    $health = true;
-}
-
 if ($health) { //if the global health is asked for, then check the battery, the sectors, the power, ...
     $battery = true;
     $sectors = true;
     $power = true;
-    $summ = true;
-    $path = true;
     $hotspare = true;
 }
 
@@ -125,7 +108,7 @@ if ($battery) {
     $cmds[] = "show storagearray batteryage";
     $cmds[] = "show \"$progname stop batteryage\"";
 }
-if ($summ || $mode == "virtualdisks") {
+if ($summ) {
     $cmds[] = "show \"$progname start vd summary\"";
     $cmds[] = "show allvirtualdisks summary";
     $cmds[] = "show \"$progname stop vd summary\"";
@@ -136,7 +119,7 @@ if ($path) {
     $cmds[] = "show storagearray virtualdiskdistribution";
     $cmds[] = "show \"$progname stop vd paths\"";
 }
-if ($perf && $mode == "virtualdisks") {
+if ($perf) {
     $cmds[] = "show \"$progname start vd performance\"";
     $cmds[] = "show allvirtualdisks performancestats";
     $cmds[] = "show \"$progname stop vd performance\"";
@@ -170,29 +153,15 @@ if ($debug ) {
     print "\n----------------- end of dump -----------------\n";
 }
 
-$arrayPath = array();
-$perfTotals = array();
-$keysPerf = array();
-$vdPerformance = array();
-$summValues = array();
-$perfTotalsC = array();
-$pbComp = array();
-$currComp = "";
-$pbBatt = array();
-$currStatus = "";
-
-$arrayVDName = array();
-$totalPower = 0;
-$powerInfos = array();
-$clockInSync = true;
-$badSectors = true;
-$failures = false;
-$failInfo = "";
-
 for ($i = 0; $i < count($strLines); $i++) {
     $curLine = $strLines[$i];
     switch ($curLine) {
     case "$progname start healthstatus":
+        $clockInSync = true;
+        $pbComp = array();
+        $currComp = "";
+        $failures = false;
+        $failInfo = "";
         do {
             $curLine = $strLines[++$i];
             if (strpos($curLine, "clocks in the storage array are out of synchronization") !== false) {
@@ -221,6 +190,8 @@ for ($i = 0; $i < count($strLines); $i++) {
         break;
 
     case "$progname start batteryage":
+        $pbBatt = array();
+        $currStatus = "";
         do {
             $curLine = $strLines[++$i];
             if (preg_match($regSABatteryStatus, $curLine, $mBatt)) {
@@ -238,6 +209,7 @@ for ($i = 0; $i < count($strLines); $i++) {
         break;
 
     case "$progname start sectors":
+        $badSectors = true;
         do {
             $curLine = $strLines[++$i];
             if (strpos($curLine, "currently no unreadable sectors on the storage array") !== false) {
@@ -248,6 +220,8 @@ for ($i = 0; $i < count($strLines); $i++) {
         break;
 
     case "$progname start power":
+        $totalPower = 0;
+        $powerInfos = array();
         do {
             $curLine = $strLines[++$i];
             if (preg_match($regSAPowerInfoSection, $curLine, $mTP)) {
@@ -262,6 +236,7 @@ for ($i = 0; $i < count($strLines); $i++) {
 
     case "$progname start vd summary":
         $vdName = "";
+        $summValues = array();
         do {
             $curLine = $strLines[++$i];
             if (preg_match($regVDSummValues, $curLine)) {
@@ -271,15 +246,13 @@ for ($i = 0; $i < count($strLines); $i++) {
                 //MD3000: status == 1, capacity = 2+4
                 $vdName = $tmpSummValues[0];
                 $summValues[$vdName] = $tmpSummValues;
-                if (!in_array($vdName, $arrayVDName)) {
-                    $arrayVDName[] = $vdName;
-                }
             }
         } while ($curLine != "$progname stop vd summary");
         break;
 
     case "$progname start vd paths":
         $vdName = "";
+        $arrayPath = array();
         do {
             $curLine = $strLines[++$i];
             if (preg_match($regVDName, $curLine, $mVD)) {
@@ -288,20 +261,19 @@ for ($i = 0; $i < count($strLines); $i++) {
                 if (!isset($arrayPath[$vdName])) {
                     $arrayPath[$vdName] = array();
                 }
-            } elseif ($path) {
+            } elseif (preg_match($regVDPathPref, $curLine, $mPathPref)) {
                 //Retrieves the preferred path
-                if (preg_match($regVDPathPref, $curLine, $mPathPref)) {
-                    $arrayPath[$vdName]["Pref"] = $mPathPref[1];
-                }
+                $arrayPath[$vdName]["Pref"] = $mPathPref[1];
+            } elseif (preg_match($regVDPathCurr, $curLine, $mPathCurr)) {
                 //Retrieves the current path
-                if (preg_match($regVDPathCurr, $curLine, $mPathCurr)) {
-                    $arrayPath[$vdName]["Curr"] = $mPathCurr[1];
-                }
+                $arrayPath[$vdName]["Curr"] = $mPathCurr[1];
             }
         } while ($curLine != "$progname stop vd paths");
         break;
 
     case "$progname start vd performance":
+        $keysPerf = array();
+        $vdPerformance = array();
         do {
             $curLine = $strLines[++$i];
             if (preg_match($regVDPerfHeader, $curLine)) {
@@ -310,8 +282,7 @@ for ($i = 0; $i < count($strLines); $i++) {
             } elseif (preg_match($regVDPerfValues, $curLine, $mVDID)) {
                 //Retrieves the perf values of the virtual disks
                 $vdName = $mVDID[1];
-                $tmpPerfValues = explode (",", str_replace("\"","",$curLine));
-                $vdPerformance[$vdName] = $tmpPerfValues;
+                $vdPerformance[$vdName] = explode (",", str_replace("\"", "", $curLine));
             }
         } while ($curLine != "$progname stop vd performance");
         break;
@@ -331,302 +302,190 @@ for ($i = 0; $i < count($strLines); $i++) {
                 $hsValues["inuse"] = $mHsInuse[1];
             }
         } while ($curLine != "$progname stop hotspare");
+        break;
     }
 }
 
 // create the information part of the output
-$state = "Optimal";
-$infos = "";
-$exit_code = $exit_OK;
+
+set_exit(OK);
+$infos = array();
 
 if ($health) {
-    $tmpInfos = "";
-    for ($i = 1; $i <= count($pbComp); $i++) {
-        $state = "CRITICAL";
-        $exit_code = $exit_E;
-        if ($tmpInfos != "") {
-            $tmpInfos.= ", ";
+    if (count($pbComp)) {
+        $compfails = array();
+        foreach ($pbComp as $comp) {
+            $compfails[] = $comp;
         }
-        $tmpInfos .= $pbComp[$i];
+        set_exit(CRITICAL, "component problems");
+        $infos[] = "Component problems: " . implode(",", $compfails);
     }
-    if ($tmpInfos != "") {
-        $infos .= "PB Ctrl: ".$tmpInfos." - ";
-    }
-    else {
-        if ($clockInSync) {
-            $infos .= "Ctrl OK - ";
-        } else {
-            $infos .= "Ctrl Clock Out of Sync - ";
-        }
+    if ($clockInSync) {
+        $infos[] = "Clock OK";
+    } else {
+        set_exit(WARNING, "clock sync");
+        $infos[] = "Clock out of sync";
     }
     if ($failures) {
-        if ($exit_code != $exit_E) {
-            $state = "WARNING";
-            $exit_code = $exit_W;
-        }
-        if ($debug) print "warning due to failures \n";
+        set_exit(WARNING, "component failures");
+        $infos[] = "Failures: $failinfo";
     }
 }
+
 if ($sectors) {
     if ($badSectors) {
-        $state = "CRITICAL";
-        $exit_code = $exit_E;
-        $infos .= "Bad Disk Sectors Detected - ";
-    }else{
-        $infos .= "Disk Sectors OK - ";
+        set_exit(CRITICAL, "bad disk sectors");
+        $infos[] = "Bad disk sectors detected";
+    } else {
+        $infos[] = "Disk sectors OK";
     }
 }
+
 if ($battery) {
-    $tmpInfos = "";
-    for ($i = 0; $i < count($pbBatt); $i++) {
-        if ($pbBatt[$i]["s"] != "Optimal") {
-            if ($exit_code != $exit_E) {
-                $state = "WARNING";
-                $exit_code = $exit_W;
-                if ($debug) print "warning due to battery \n";
-            }
-            if ($tmpInfos != "") {
-                $tmpInfos.= ", ";
-            }
-            $tmpInfos .= $pbBatt[$i]["l"];
+    $battFails = array();
+    foreach ($pbBatt as $batt) {
+        if ($batt["s"] != "Optimal") {
+            $battFails[] = $batt["l"];
         }
     }
-    if ($tmpInfos != "") {
-        $infos .= "Battery with issues: ".$tmpInfos." - ";
+    if (count($battFails)) {
+        set_exit(WARNING, "bad batteries");
+        $infos[] = count($battFails) . " batteries with issues: " . implode(",", $battFails);
     } else {
-        $infos .= count($pbBatt)." Batteries OK - ";
+        $infos[] = count($pbBatt) . " batteries OK";
     }
 }
+
 if ($summ) {
-    $tmpInfos = "";
-    for ($i = 0; $i < count($summValues); $i++) {
-        $vdName = $arrayVDName[$i];
-        if ($summValues[$vdName][2] != "Optimal" && $summValues[$vdName][1] != "Optimal") {
-            if ($exit_code != $exit_E) {
-                $state = "WARNING";
-                $exit_code = $exit_W;
-                if ($debug) {
-                    print "warning due to VD \n";
-                }
-            }
-            if ($tmpInfos != "") {
-                $tmpInfos.= ", ";
-            }
-            $tmpInfos .= $summValues[$vdName][0];
+    $badVD = array();
+    foreach ($summValues as $vdSummary) {
+        if ($vdSummary[2] != "Optimal" && $vdSummary[1] != "Optimal") {
+            $badVD[] = $vdSummary[0];
         }
     }
-    if ($tmpInfos != "") {
-        $infos .= "NON Optimal VD: ".$tmpInfos." - ";
+    if (count($badVD)) {
+        set_exit(WARNING, "virtual disk state");
+        $infos[] = "Non-optimal VD: " . implode(",", $badVD);
     } else {
-        $infos .= "All VD Optimal - ";
+        $infos[] = "All VD optimal";
     }
 }
+
 if ($hotspare) {
-    $tmpInfos = "";
-    if (isset($hsValues["total"])) {
-        if ($hsValues["total"] < 1) {
-            $state = "CRITICAL";
-            $exit_code = $exit_E;
-            if (debug) {
-                print "critical due to no hot spares \n";
-            }
-            if ($tmpInfos != "") {
-                $tmpInfos.= ", ";
-            }
-            $tmpInfos .= "Total: $hsValues[total]";
-        }
-    } else {
-        $state = "UNKNOWN";
-        $exit_code = $exit_U;
-        if ($tmpInfos != "") {
-            $tmpInfos.= ", ";
-        }
-        $tmpInfos .= "Total: unknown";
+    $hsErr = array();
+    if (isset($hsValues["total"]) && $hsValues["total"] < 1) {
+        set_exit(CRITICAL, "hot spare totals");
+        $hsErr[] = "No hot spares configured";
+    } elseif (!isset($hsValues["total"])) {
+        set_exit(UNKNOWN, "hot spare totals");
+        $hsValues["total"] = "unknown";
+        $hsErr[] = "Unknown hot spares configured";
     }
-    if (isset($hsValues["inuse"])) {
-        if ($hsValues["inuse"] > 0 && $exit_code != $exit_E) {
-            $state = "WARNING";
-            $exit_code = $exit_W;
-            if (debug) {
-                print "warning due to hot spare in use \n";
-            }
-            if ($tmpInfos != "") {
-                $tmpInfos.= ", ";
-            }
-            $tmpInfos .= "In use: $hsValues[total]";
-        }
-    } else {
-        $state = "UNKNOWN";
-        $exit_code = $exit_U;
-        if ($tmpInfos != "") {
-            $tmpInfos.= ", ";
-        }
-        $tmpInfos .= "In use: unknown";
+    if (isset($hsValues["inuse"]) && $hsValues["inuse"] > 0) {
+        set_exit(WARNING, "hot spare in use");
+        $hsErr[] = "Hot spares in use";
+    } elseif (!isset($hsValues["inuse"])) {
+        set_exit(UNKNOWN, "hot spare in use");
+        $hsValues["inuse"] = "unknown";
+        $hsErr[] = "Unknown hot spares in use";
     }
-    if (isset($hsValues["standby"])) {
-        if ($hsValues["standby"] < 1) {
-            $state = "CRITICAL";
-            $exit_code = $exit_E;
-            if (debug) {
-                print "critical due to no hot spare standbys \n";
-            }
-            if ($tmpInfos != "") {
-                $tmpInfos.= ", ";
-            }
-            $tmpInfos .= "Standby: $hsValues[total]";
-        }
-    } else {
-        $state = "UNKNOWN";
-        $exit_code = $exit_U;
-        if ($tmpInfos != "") {
-            $tmpInfos.= ", ";
-        }
-        $tmpInfos .= "Standby: unknown";
+    if (isset($hsValues["standby"]) && $hsValues["standby"] < 1) {
+        set_exit(CRITICAL, "hot spare standbys");
+        $hsErr[] = "No hot spares available";
+    } elseif (!isset($hsValues["standby"])) {
+        set_exit(UNKNOWN, "hot spare standbys");
+        $hsValues["standby"] = "unknown";
+        $hsErr[] = "Unknown hot spares available";
     }
-    if (empty($tmpInfos)) {
-        $infos .= "Hot spare status OK - ";
+    if (count($hsErr)) {
+        $infos[] = "Hot spare status NOT OK: " . implode(",", $hsErr);
     } else {
-        $infos .= "Hot spare status NOT OK: $tmpInfos - ";
+        $infos[] = "Hot spare status OK";
     }
 }
-if ($health) {
-    $tmpInfos = "";
-    if ($debug) {
-        print "------------- path debug section --------------\n";
-        print "path values: \n";
-        print_r($arrayPath);
-        print "------------- end of path debug --------------\n";
+
+if ($path) {
+    $pathErr = array();
+    debug_print($arrayPath);
+    foreach ($arrayPath as $vdName=>$vdPath) {
+        if ($vdPath["Pref"] != $vdPath["Curr"] ) {
+            set_exit(WARNING, "virtual disk path mismatch");
+            $pathErr[] = $vdName;
+        }
     }
-    foreach ($arrayVDName as $i =>$vdName) {
-        if (!isset($arrayPath[$vdName])) {
+    if (count($pathErr)) {
+        $infos[] = "VD on non-preferred path: " . implode(",", $pathErr);
+    } else {
+        $infos[] = "VD paths OK";
+    }
+}
+
+if ($perf) {
+    $perfTotals = array();
+    $perfTotalsC = array();
+    $tots = array();
+    debug_print($keysPerf + $vdPerformance);
+    foreach ($keysPerf as $col=>$header) {
+        if (($argAdd && !preg_match($argAdd, $header)) || ($argDel && preg_match($argDel, $header))) {
             continue;
         }
-        if ( $arrayPath[$vdName]["Pref"] != $arrayPath[$vdName]["Curr"] ) {
-            if ($exit_code != $exit_E) {
-                $state = "WARNING";
-                $exit_code = $exit_W;
-            }
-            if ($tmpInfos != "") {
-                $tmpInfos.= ", ";
-            }
-            $tmpInfos .= $vdName;
-        }
-    }
-    if ($tmpInfos != "") {
-        $infos .= "VD on Non-Pref Path: ".$tmpInfos." - ";
-    } else {
-        $infos .= "VD Paths OK - ";
-    }
-}
-if ($perf) {
-    if ($debug ) {
-        print "------------- perf debug section --------------\n";
-        print "path values: \n";
-        print_r($arrayPath);
-        print "VD Names: \n";
-        print_r($arrayVDName);
-        print "VD Summary: \n";
-        print_r($summValues);
+        $nbVD = count($vdPerformance);
+        $perfTotals[$col] = 0;
 
-        print "perf keys: \n";
-        print_r($keysPerf);
-        print "perf values: \n";
-        print_r($vdPerformance);
-        print "------------- end of perf debug --------------\n";
-    }
-    for ($col = 0; $col< count($keysPerf); $col++) {
-        if (
-            ($argAdd == "" || preg_match($argAdd, $keysPerf[$col]) == 1 ) &&
-            ($argDel == "" || preg_match($argDel, $keysPerf[$col]) == 0 )
-        ) {
-            $nbVD = count($arrayVDName);
-            $perfTotals[$col] = 0;
-
-            // Add the values
-            for ($vd = 0; $vd< $nbVD; $vd++) {
-                $ln = $arrayVDName[$vd];
-                $val = $vdPerformance[$ln][$col];
-                //Total
-                if (strpos($keysPerf[$col],"%") > 0 || strpos($keysPerf[$col],"Percentage") > 0) {
-                    $perfTotals[$col]+= ($vdPerformance[$ln][$col]/$nbVD);
+        // Add the values
+        foreach($vdPerformance as $vdName=>$vdPerf) {
+            $val = $vdPerf[$col];
+            //Total
+            if (strpos($header, "%") > 0 || strpos($header, "Percentage") > 0) {
+                $perfTotals[$col] += ($val / $nbVD);
+            } else {
+                $perfTotals[$col] += $val;
+            }
+            //Sub total per controller
+            if ($path) {
+                $ctrl = $arrayPath[$vdName]["Curr"];
+                if (!isset($perfTotalsC[$col][$ctrl])) {
+                    $perfTotalsC[$col][$ctrl] = 0;
+                }
+                if (strpos($header, "%") > 0 || strpos($header, "Percentage") > 0) {
+                    $perfTotalsC[$col][$ctrl] += ($val / $nbVD);
                 } else {
-                    $perfTotals[$col] += $val;
-                }
-                //Sub total per controller
-                if ($path) {
-                    $ctrl = $arrayPath[$ln]["Curr"];
-
-                    if (!isset($perfTotalsC[$col][$ctrl])) $perfTotalsC[$col][$ctrl] = 0;
-
-
-                    if (strpos($keysPerf[$col],"%") > 0 || strpos($keysPerf[$col],"Percentage") > 0) {
-                        $perfTotalsC[$col][$ctrl] += ($vdPerformance[$ln][$col]/$nbVD);
-                    } else {
-                        $perfTotalsC[$col][$ctrl] += $val;
-                    }
-                }
-                //Per Virtual Disk
-                if (!$otot) {
-                    if ($output_msg !== "") {
-                        $output_msg .= ",";
-                    }
-                    $output_msg .= str_replace("Virtual Disk ","VD ",$vdPerformance[$ln][0])." ".$keysPerf[$col]." = ".$vdPerformance[$ln][$col];
+                    $perfTotalsC[$col][$ctrl] += $val;
                 }
             }
-            if (!$ntot) {
-                // Add the totals
-                if ($output_msg !== "") {
-                    $output_msg .= ",";
-                }
-                $output_msg .= "Total ".$keysPerf[$col]." = ".$perfTotals[$col];
-                // Add the sub totals per controller
-                if ($path) {
-                    for ($k = 0; $k<count($perfTotalsC[$col]); $k++) {
-                        if ($output_msg !== "") {
-                            $output_msg .= ",";
-                        }
-                        $output_msg .= "Ctrl $k ".$keysPerf[$col]." = ".$perfTotalsC[$col][$k];
-                    }
+            //Per Virtual Disk
+            if (!$otot) {
+                $tots[] = str_replace("Virtual Disk ", "VD ", $vdPerf[0]) . " $header = $val";
+            }
+        }
+        if (!$ntot) {
+            // Add the totals
+            $tots[] = "Total $header = " . $perfTotals[$col];
+            // Add the sub totals per controller
+            if ($path) {
+                foreach ($perfTotalsC[$col] as $ctrl=>$val) {
+                    $tots[] = "Ctrl $ctrl $header = $val";
                 }
             }
         }
     }
+    if (!$ntot) {
+        $infos[] = "Performance totals: " . implode(",", $tots);
+    }
 }
+
 if ($power) {
-    $tmpOutput = "";
-    for ($i = 0; $i < count($powerInfos); $i++) {
-        if ($tmpOutput != "") {
-            $tmpOutput .= ",";
-        }
-        $tmpOutput .= "Power Supply E".$powerInfos[$i]["E"]." S".$powerInfos[$i]["S"]." = ".$powerInfos[$i]["P"];
+    $ps = array();
+    foreach ($powerInfos as $power) {
+        $ps[] = "Power Supply E" . $power["E"] . " S" . $power["S"] . " = " . $power["P"];
+        
     }
-    if ($tmpOutput != "") {
-        $tmpOutput .= ",";
-    }
-    $tmpOutput .= "Power Supply Total = ".$totalPower;
-    $output_msg.= $tmpOutput;
+    $ps[] = "Power Supply Total = $totalPower";
+    $infos[] = "Power info: " . implode(",", $ps);
 }
 
-$perf_data = str_replace(" ","_",$output_msg);
-//replaces the space in the labels
-
-if ($perf && $hotspare && isset($hsValues)) {
-    if ($perf_data !== "") {
-        $perf_data .= " ";
-    }
-    $perf_data .= "hotspare_total = $hsValues[total] hotspare_standby = $hsValues[standby] hotspare_used = $hsValues[inuse]";
-}
-
-if ($failures && $health) {
-    $output_msg = "$state - $infos - $failInfo - ".$output_msg;
-} else {
-    $output_msg = "$state - $infos ".$output_msg;
-}
-if ($perf_data != "") {
-    $output_msg = $output_msg."|".str_replace(","," ",$perf_data);
-}
 if (!$noout) {
-    display_output($exit_code, $output_msg);
+    display_output("$exit_text " . implode(" - ", $infos));
 }
 
 
@@ -635,25 +494,75 @@ if (!$noout) {
 // Functions //
 //-----------//
 
-//Function to check if controller is alive
-function isAlive($ip) {
-    $pingresult = exec("ping -c 3 $ip", $outcome, $status);
-    if (0 == $status) {
-        return true;
-    } else {
-        return false;
+function set_exit($state, $debug_text = "") {
+    global $exit_code, $exit_text, $debug;
+
+    if ($exit_code === CRITICAL) {
+        return;
+    }
+    switch ($state) {
+    case OK:
+        if ($exit_code === WARNING || $exit_code === UNKNOWN) {
+            return;
+        }
+        $exit_code = $state;
+        $exit_text = "OK";
+        break;
+    case WARNING:
+        $exit_code = $state;
+        $exit_text = "WARNING";
+        break;
+    case CRITICAL:
+        $exit_code = $state;
+        $exit_text = "CRITICAL";
+        break;
+    case UNKNOWN:
+        if ($exit_code === WARNING) {
+            return;
+        }
+        $exit_code = $state;
+        $exit_text = "UNKNOWN";
+        break;
+    }
+    if ($debug && $debug_text) {
+        echo "Setting state to $exit_text: $debug_text";
     }
 }
 
+function debug_print($arr, $header = "") {
+    global $debug;
+    if (!$debug) {
+        return;
+    }
+    echo "\n============== start $header =============\n";
+    print_r($arr);
+    echo "\n==============  end  $header =============\n";
+}
+
+//Function to check if controller is alive
+function ping_check($ip) {
+    global $ping;
+    if (!$ping) {
+        return true;
+    }
+    $ip = gethostbyname($ip);
+    if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+        return false;
+    }
+    exec("ping -c 2 $ip", $foo, $status);
+    return ($status == 0) ? true : false;
+}
+
 // Function to display the output
-function display_output($exit_code, $output_msg) {
-    print $output_msg;
+function display_output($output_msg) {
+    global $exit_code;
+    echo "$output_msg\n";
     exit($exit_code);
 }
 
 // Function to display detailed help
 function help() {
-print <<<EOF
+     $msg = <<<EOF
 
 Options:
 --help
@@ -662,8 +571,6 @@ Options:
     IP of controller 1
 --c2
     IP of controller 2
---mode
-    optional mode to use - only one atm virtualdisks
 --debug-no
     debug output without the output msg
 --debug
@@ -679,7 +586,7 @@ Options:
 --hotspares
     check the state of hot spares in the array - can be graphed
 --health
-    check battery, power, sectors, path, hot spares...
+    shorthand for --battery, --power, --sectors, --hot spares
 -ot
 --only-totals
     output only totals, and sub totals with --path
@@ -702,6 +609,7 @@ Options:
     Not implemented
 
 EOF;
-exit(0);
+    set_exit(OK);
+    display_output($msg);
 }
 ?>
