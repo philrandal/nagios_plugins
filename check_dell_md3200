@@ -11,6 +11,7 @@ define("OK", 0);
 define("WARNING", 1);
 define("CRITICAL", 2);
 define("UNKNOWN", 3);
+$exit_text = "OK";
 $exit_code = 0;
 
 $shortopts = "a:r:";
@@ -111,6 +112,21 @@ if ($battery) {
     $cmds[] = "show storagearray batteryage";
     $cmds[] = "show \"$progname stop batteryage\"";
 }
+if ($sectors) {
+    $cmds[] = "show \"$progname start sectors\"";
+    $cmds[] = "show storagearray unreadablesectors";
+    $cmds[] = "show \"$progname stop sectors\"";
+}
+if ($power) {
+    $cmds[] = "show \"$progname start power\"";
+    $cmds[] = "show storagearray powerinfo";
+    $cmds[] = "show \"$progname stop power\"";
+}
+if ($hotspare) {
+    $cmds[] = "show \"$progname start hotspare\"";
+    $cmds[] = "show storagearray hotsparecoverage";
+    $cmds[] = "show \"$progname stop hotspare\"";
+}
 if ($summ) {
     $cmds[] = "show \"$progname start vd summary\"";
     $cmds[] = "show allvirtualdisks summary";
@@ -126,21 +142,6 @@ if ($perf) {
     $cmds[] = "show \"$progname start vd performance\"";
     $cmds[] = "show allvirtualdisks performancestats";
     $cmds[] = "show \"$progname stop vd performance\"";
-}
-if ($sectors) {
-    $cmds[] = "show \"$progname start sectors\"";
-    $cmds[] = "show storagearray unreadablesectors";
-    $cmds[] = "show \"$progname stop sectors\"";
-}
-if ($power) {
-    $cmds[] = "show \"$progname start power\"";
-    $cmds[] = "show storagearray powerinfo";
-    $cmds[] = "show \"$progname stop power\"";
-}
-if ($hotspare) {
-    $cmds[] = "show \"$progname start hotspare\"";
-    $cmds[] = "show storagearray hotsparecoverage";
-    $cmds[] = "show \"$progname stop hotspare\"";
 }
 
 if (empty($cmds)) {
@@ -362,10 +363,12 @@ if ($battery) {
 if ($power) {
     $ps = array();
     foreach ($powerInfos as $power) {
-        $ps[] = "Power Supply E" . $power["E"] . " S" . $power["S"] . " = " . $power["P"];
-        
+        $ps[] = "Enclosure $power[E] Serial $power[S] $power[P]W";
+        if ($stats) {
+            $statistics["Power_E$power[E]_S$power[S]"] = $power["P"];
+        }
     }
-    $ps[] = "Power Supply Total = $totalPower";
+    $ps[] = "Total Consumption ${totalPower}W";
     $infos[] = "Power info: " . implode(",", $ps);
 }
 
@@ -403,6 +406,11 @@ if ($hotspare) {
         set_exit(UNKNOWN, "hot spare standbys");
         $hsValues["standby"] = "unknown";
         $hsErr[] = "Unknown hot spares available";
+    }
+    if ($stats) {
+        $statistics["Spares_total"] = $hsValues["total"];
+        $statistics["Spares_inuse"] = $hsValues["inuse"];
+        $statistics["Spares_avail"] = $hsValues["standby"];
     }
     if (count($hsErr)) {
         $infos[] = "Hot spare status NOT OK: " . implode(",", $hsErr);
@@ -498,7 +506,17 @@ if ($perf) {
 
 debug_print(microtime(true));
 if (!$noout) {
-    display_output("$exit_text " . implode(" - ", $infos));
+    $output_msg = "$exit_text " . implode(" - ", $infos);
+    if ($stats) {
+        $output_msg .= "|";
+        foreach($statistics as $k=>$v) {
+            $output_msg .= str_replace(" ", "_", $k);
+            $output_msg .= "=";
+            $output_msg .= preg_replace("/[^\d%]/", "", $v);
+            $output_msg .= " ";
+        }
+    }
+    display_output($output_msg);
 }
 
 
@@ -667,4 +685,120 @@ function get_smcli_error($code) {
     ];
     return "SMcli error $code " . (isset($err[$code]) ? $err[$code] : "");
 }
-?>
+
+/***
+Sample output from commands follows
+
+show storagearray healthstatus;
+
+The following failures have been found:
+
+Degraded Volume
+Storage array: tslab7172_7173-5460
+Volume group: 1
+RAID level: 6
+Tray: Controller tray 99, Drawer 1
+Affected drive slot(s): 4
+Service action (removal) allowed: Yes
+Service action LED on component: Yes
+Volumes: LUN_1
+Status: Degraded
+
+Degraded Volume
+Storage array: tslab7172_7173-5460
+Volume group: 2
+RAID level: 6
+Tray: Controller tray 99, Drawer 1
+Affected drive slot(s): 5
+Service action (removal) allowed: Yes
+Service action LED on component: Yes
+Volumes: LUN_2
+Status: Degraded
+
+Degraded Volume
+Storage array: tslab7172_7173-5460
+Volume group: 0
+RAID level: 6
+Tray: Controller tray 99, Drawer 1
+Affected drive slot(s): 1
+Service action (removal) allowed: Yes
+Service action LED on component: Yes
+Volumes: LUN_0
+Status: Degraded
+
+
+show storagearray unreadablesectors;
+
+Virtual Disk LUN Accessible By Date/Time Virtual Disk LBA Physical Disk Location Physical Disk LBA Failure Type
+Storage 1 Host D9VM2950 6/25/13 12:49:49 AM 0x5ae76c9a Enclosure 0, Slot 15 0xf26929a Logical
+Storage 1 Host D9VM2950 6/25/13 12:49:33 AM 0x5ae76d9a Enclosure 0, Slot 10 0xf26929a Physical
+
+
+show storagearray powerinfo;
+
+Total power drawn: 1,738 Watts
+Number of enclosures: 2
+Enclosure power input details:
+
+   ENCLOSURE ID  POWER SUPPLY SERIAL NUMBER   INPUT POWER
+   0             0                            446 Watts
+   0             1                            466 Watts
+   1             0                            440 Watts
+   1             1                            386 Watts
+
+
+show storagearray hotsparecoverage;
+
+   The following disk groups are not protected: None - All disk groups are protected
+   Total hot spare physical disks: 1
+
+      Standby:  1  
+      In use:   0  
+
+   Standby physical disk at enclosure 0, slot 10 (SAS, 558.912 GB)
+      Protects the following disk groups: Disk_Group_1
+
+
+show allvirtualdisks summary;
+
+STANDARD VIRTUAL DISKS SUMMARY
+Number of standard virtual disks: 2
+
+
+Name     Thin Provisioned     Status     Capacity      Accessible by     Source                   
+VD_1     No                   Optimal    1,024.000 GB  Host Group POFP   Disk Group Disk_Group_1  
+VD_2     No                   Optimal    1,024.000 GB  Host Group POFP   Disk Group Disk_Group_1  
+
+
+show storagearray preferredvirtualdiskowners;
+
+Virtual Disk name: VD_1
+	Preferred owner is RAID controller module in slot: 0
+Virtual Disk name: VD_2
+	Preferred owner is RAID controller module in slot: 1
+
+
+show storagearray virtualdiskdistribution;
+
+Virtual Disk name: VD_1
+	Current owner is RAID controller module in slot: 0
+Virtual Disk name: VD_2
+	Current owner is RAID controller module in slot: 1
+
+
+show allvirtualdisks performancestats;
+
+"Performance Monitor Statistics for Storage Array: MY-SAN1 - Date/Time: 4/15/16 3:52:47 PM - Polling interval in seconds: 5"
+
+
+"Storage Arrays ","Total IOs","Read %","Primary Read Cache Hit %","Primary Write Cache Hit %","SSD Read Cache Hit %","Current MB/second","Maximum MB/second","Current IO/second","Maximum IO/second"
+
+"Capture Iteration: 1","","","","","","","","",""
+"Date/Time: 4/15/16 3:52:47 PM","","","","","","","","",""
+"CONTROLLER IN SLOT 1","578.0","0.9","80.0","100.0","0.0","1.4","1.4","115.6","115.6"
+"Virtual Disk VD_2","578.0","0.9","80.0","100.0","0.0","1.4","1.4","115.6","115.6"
+"CONTROLLER IN SLOT 0","186.0","0.0","0.0","100.0","0.0","0.4","0.4","37.2","37.2"
+"Virtual Disk VD_1","186.0","0.0","0.0","100.0","0.0","0.4","0.4","37.2","37.2"
+"STORAGE ARRAY TOTALS","764.0","0.7","80.0","100.0","0.0","1.8","1.8","152.8","152.8"
+
+***/
