@@ -2,8 +2,9 @@
 <?php
 
 $progname = "check_dell_md3200";
+$version = "1.0";
 //base path for the smcli client
-$smcli = "/opt/dell/mdstoragesoftware/mdstoragemanager/client/SMcli";
+$smcli = getenv("SMCLI_PATH") ?: "/opt/dell/mdstoragesoftware/mdstoragemanager/client/SMcli";
 
 //Exit codes
 define("OK", 0);
@@ -13,7 +14,11 @@ define("UNKNOWN", 3);
 $exit_code = 0;
 
 $shortopts = "a:r:";
-$longopts = ["help", "c1:", "c2:", "debug-no", "debug", "md3000", "battery", "power", "sectors", "hotspare", "health", "only-totals", "no-totals", "summary", "path", "perf", "vd", "no-ping-check"];
+$longopts = [
+    "help", "c1:", "c2:", "debug-no", "debug", "md3000", "no-ping-check", "stats",
+    "battery", "power", "sectors", "hotspare", "health",
+    "only-totals", "no-totals", "summary", "path", "vd", "perf"
+];
 $opts = getopt($shortopts, $longopts);
 
 if (isset($opts["help"])) {
@@ -23,20 +28,24 @@ if (isset($opts["help"])) {
 //options
 $ctrl1 = isset($opts["c1"]) ? $opts["c1"] : "";
 $ctrl2 = isset($opts["c2"]) ? $opts["c2"] : "";
-$path = isset($opts["path"]);
-$perf = isset($opts["perf"]);
-$otot = isset($opts["only-totals"]);
-$ntot = isset($opts["no-totals"]);
-$summ = isset($opts["summary"]);
-$battery = isset($opts["battery"]);
-$health = isset($opts["health"]);
-$sectors = isset($opts["sectors"]);
-$power = isset($opts["power"]);
-$debug = isset($opts["debug"]);
 $noout = isset($opts["debug-no"]);
-$hotspare = isset($opts["hotspare"]);
+$debug = isset($opts["debug"]) || isset($opts["debug-no"]);
 $md3000 = isset($opts["md3000"]);
 $ping = !isset($opts["no-ping-check"]);
+$stats = isset($opts["stats"]);
+
+$battery = isset($opts["battery"]) || isset($opts["health"]);
+$power = (isset($opts["power"]) || isset($opts["health"])) && !isset($opts["md3000"]);
+$sectors = isset($opts["sectors"]) || isset($opts["health"]);
+$hotspare = isset($opts["hotspare"]) || isset($opts["health"]);
+$health = isset($opts["health"]);
+
+$otot = isset($opts["only-totals"]);
+$ntot = isset($opts["no-totals"]);
+$summ = isset($opts["summary"]) || isset($opts["vd"]);
+$path = isset($opts["path"]) || isset($opts["only-totals"]) || isset($opts["no-totals"]) || isset($opts["vd"]);
+$perf = isset($opts["perf"]);
+
 $argAdd = isset($opts["a"]) ? "/" . str_replace("/", "\\/", $opts["a"]) . "/" : "";
 $argDel = isset($opts["r"]) ? "/" . str_replace("/", "\\/", $opts["r"]) . "/" : "";
 
@@ -70,6 +79,7 @@ $regHsSection = "/Total hot spare physical disks:\s+(\d+)/";
 $regHsStandby = "/Standby:\s+(\d+)/";
 $regHsInuse = "/In use:\s+(\d+)/";
 
+debug_print(microtime(true));
 //check if controllers can be reached
 if (!ping_check($ctrl1)) {
     $ctrl1 = "";
@@ -86,17 +96,6 @@ if (!$ctrl1 && !$ctrl2) {
 
 //parsing section
 $cmds = array();
-
-if ($health) { //if the global health is asked for, then check the battery, the sectors, the power, ...
-    $battery = true;
-    $sectors = true;
-    $power = true;
-    $hotspare = true;
-}
-
-if ($md3000) {
-    $power = false;
-}
 
 if ($health) {
     $cmds[] = "show \"$progname start healthstatus\"";
@@ -140,18 +139,21 @@ if ($hotspare) {
     $cmds[] = "show \"$progname stop hotspare\"";
 }
 
+if (empty($cmds)) {
+    set_exit(UNKNOWN);
+    display_output("UNKNOWN No commands to send, check program arguments");
+}
 $cmds = escapeshellarg(implode(";", $cmds) . ";");
 $ctrl1 = escapeshellarg($ctrl1);
 $ctrl2 = escapeshellarg($ctrl2);
 $cmd = "$smcli $ctrl1 $ctrl2 -S -c $cmds";
+
+debug_print(microtime(true));
+debug_print($cmd, "command line");
 exec($cmd, $strLines, $exitcode);
 
-if ($debug ) {
-    print "CMD: $cmd\n";
-    print "\n----------------- smcli  dump -----------------\n";
-    print implode("\n", $strLines);
-    print "\n----------------- end of dump -----------------\n";
-}
+debug_print(microtime(true));
+debug_print(implode("\n", $strLines), "SMcli output");
 
 for ($i = 0; $i < count($strLines); $i++) {
     $curLine = $strLines[$i];
@@ -308,6 +310,7 @@ for ($i = 0; $i < count($strLines); $i++) {
 
 // create the information part of the output
 
+debug_print(microtime(true));
 set_exit(OK);
 $infos = array();
 
@@ -406,7 +409,7 @@ if ($hotspare) {
 
 if ($path) {
     $pathErr = array();
-    debug_print($arrayPath);
+    debug_print($arrayPath, "path info");
     foreach ($arrayPath as $vdName=>$vdPath) {
         if ($vdPath["Pref"] != $vdPath["Curr"] ) {
             set_exit(WARNING, "virtual disk path mismatch");
@@ -424,7 +427,7 @@ if ($perf) {
     $perfTotals = array();
     $perfTotalsC = array();
     $tots = array();
-    debug_print($keysPerf + $vdPerformance);
+    debug_print($keysPerf + $vdPerformance, "performance info");
     foreach ($keysPerf as $col=>$header) {
         if (($argAdd && !preg_match($argAdd, $header)) || ($argDel && preg_match($argDel, $header))) {
             continue;
@@ -484,6 +487,7 @@ if ($power) {
     $infos[] = "Power info: " . implode(",", $ps);
 }
 
+debug_print(microtime(true));
 if (!$noout) {
     display_output("$exit_text " . implode(" - ", $infos));
 }
@@ -525,18 +529,28 @@ function set_exit($state, $debug_text = "") {
         break;
     }
     if ($debug && $debug_text) {
-        echo "Setting state to $exit_text: $debug_text";
+        file_put_contents("php://stderr", "Setting state to $exit_text: $debug_text");
     }
 }
 
-function debug_print($arr, $header = "") {
+function debug_print($val, $header = "") {
     global $debug;
     if (!$debug) {
         return;
     }
-    echo "\n============== start $header =============\n";
-    print_r($arr);
-    echo "\n==============  end  $header =============\n";
+    $msg = "";
+    if ($header) {
+        $msg .= "\n============== start $header =============\n";
+    }
+    if (is_object($val) || is_array($val)) {
+        $msg .= print_r($val, 1);
+    } else {
+        $msg .= "$val\n";
+    }
+    if ($header) {
+        $msg .= "\n==============  end  $header =============\n";
+    }
+    file_put_contents("php://stderr", $msg);
 }
 
 //Function to check if controller is alive
@@ -556,57 +570,49 @@ function ping_check($ip) {
 // Function to display the output
 function display_output($output_msg) {
     global $exit_code;
+
     echo "$output_msg\n";
     exit($exit_code);
 }
 
 // Function to display detailed help
 function help() {
-     $msg = <<<EOF
+    global $progname, $version;
 
-Options:
---help
-    Print detailed help screen
---c1
-    IP of controller 1
---c2
-    IP of controller 2
---debug-no
-    debug output without the output msg
---debug
-    debug output including the output msg
---md3000
-    specify if the SAN is an md3000
---battery
-    output battery info
---power
-    output power info - can be graphed
---sectors
-    check if there are any bad sectors detected
---hotspares
-    check the state of hot spares in the array - can be graphed
---health
-    shorthand for --battery, --power, --sectors, --hot spares
--ot
---only-totals
-    output only totals, and sub totals with --path
--nt
---no-totals
-    output no totals and only the value returned by the SAN
---summary
-    check if the virtual disks are "optimal"
---path
-    check if the virtual disks are on preferred path and output totals per controller if -nt is not specified
---perf
-    check the performance
--a
-    regular expression of the columns to retrieve for perf results
--r
-    regular expression of the columns to remove for perf results
---help
-    Print detailed help screen.
---vd
-    Not implemented
+    $msg = <<< EOF
+$progname $version, a tool for automating Dell MD3200 monitoring
+Usage: $progname [OPTIONS]
+
+General:
+    --c1             IP or hostname of controller 1
+    --c2             IP or hostname of controller 2, if present
+    --no-ping-check  Do not ping test controllers before connection
+    --debug          additional debug output to stderr
+    --debug-no       additional debug output to stderr, no output to stdout
+    --md3000         specify if the SAN is an md3000
+    --help           Print detailed help screen
+    --stats          Include stats for graphing with e.g. pnp4nagios
+
+Health:
+    --battery        output battery info
+    --power          output power info - can be graphed
+    --sectors        check if there are any bad sectors detected
+    --hotspares      check the state of hot spares in the array
+    --health         check controller health (assumes --battery, --power, --sectors, --hot spares)
+
+Virtual Disks:
+    --summary        check if the virtual disks are "optimal"
+    --path           check if the virtual disks are on preferred path and output totals
+    --only-totals    output only totals, and sub totals (assumes --path)
+    --no-totals      output no totals and only the value returned by the SAN (assumes --path)
+    --vd             shorthand for --summary --path
+
+Virtual Disk Performance:
+    --perf           check the virtual disk performance
+    -a REGEX         regular expression of the columns to retrieve for perf results
+    -r REGEX         regular expression of the columns to remove for perf results
+
+SMcli location will be taken from the SMCLI_PATH environment variable if it exists, or use the default.
 
 EOF;
     set_exit(OK);
