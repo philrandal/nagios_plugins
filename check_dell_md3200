@@ -21,6 +21,10 @@ $longopts = [
 ];
 $opts = getopt($shortopts, $longopts);
 
+if (!is_array($opts)) {
+    set_exit(UNKNOWN);
+    display_output("UNKNOWN Error parsing command line arguments");
+}
 if (isset($opts["help"])) {
     help();
 }
@@ -155,6 +159,11 @@ exec($cmd, $strLines, $exitcode);
 debug_print(microtime(true));
 debug_print(implode("\n", $strLines), "SMcli output");
 
+if ($exitcode !== 0) {
+    set_exit(UNKNOWN);
+    display_output(get_smcli_error($exitcode));
+}
+
 for ($i = 0; $i < count($strLines); $i++) {
     $curLine = $strLines[$i];
     switch ($curLine) {
@@ -205,7 +214,7 @@ for ($i = 0; $i < count($strLines); $i++) {
                     //Retrieves location of battery
                     $currLoc = $mBattLoc[1];
                 }
-                $pbBatt[] = ["s" => $currStatus, "l" => $currLoc];
+                $pbBatt[] = ["s"=>$currStatus, "l"=>$currLoc];
             }
         } while ($curLine != "$progname stop batteryage");
         break;
@@ -335,15 +344,6 @@ if ($health) {
     }
 }
 
-if ($sectors) {
-    if ($badSectors) {
-        set_exit(CRITICAL, "bad disk sectors");
-        $infos[] = "Bad disk sectors detected";
-    } else {
-        $infos[] = "Disk sectors OK";
-    }
-}
-
 if ($battery) {
     $battFails = array();
     foreach ($pbBatt as $batt) {
@@ -359,18 +359,22 @@ if ($battery) {
     }
 }
 
-if ($summ) {
-    $badVD = array();
-    foreach ($summValues as $vdSummary) {
-        if ($vdSummary[2] != "Optimal" && $vdSummary[1] != "Optimal") {
-            $badVD[] = $vdSummary[0];
-        }
+if ($power) {
+    $ps = array();
+    foreach ($powerInfos as $power) {
+        $ps[] = "Power Supply E" . $power["E"] . " S" . $power["S"] . " = " . $power["P"];
+        
     }
-    if (count($badVD)) {
-        set_exit(WARNING, "virtual disk state");
-        $infos[] = "Non-optimal VD: " . implode(",", $badVD);
+    $ps[] = "Power Supply Total = $totalPower";
+    $infos[] = "Power info: " . implode(",", $ps);
+}
+
+if ($sectors) {
+    if ($badSectors) {
+        set_exit(CRITICAL, "bad disk sectors");
+        $infos[] = "Bad disk sectors detected";
     } else {
-        $infos[] = "All VD optimal";
+        $infos[] = "Disk sectors OK";
     }
 }
 
@@ -404,6 +408,21 @@ if ($hotspare) {
         $infos[] = "Hot spare status NOT OK: " . implode(",", $hsErr);
     } else {
         $infos[] = "Hot spare status OK";
+    }
+}
+
+if ($summ) {
+    $badVD = array();
+    foreach ($summValues as $vdSummary) {
+        if ($vdSummary[2] != "Optimal" && $vdSummary[1] != "Optimal") {
+            $badVD[] = $vdSummary[0];
+        }
+    }
+    if (count($badVD)) {
+        set_exit(WARNING, "virtual disk state");
+        $infos[] = "Non-optimal VD: " . implode(",", $badVD);
+    } else {
+        $infos[] = "All VD optimal";
     }
 }
 
@@ -475,16 +494,6 @@ if ($perf) {
     if (!$ntot) {
         $infos[] = "Performance totals: " . implode(",", $tots);
     }
-}
-
-if ($power) {
-    $ps = array();
-    foreach ($powerInfos as $power) {
-        $ps[] = "Power Supply E" . $power["E"] . " S" . $power["S"] . " = " . $power["P"];
-        
-    }
-    $ps[] = "Power Supply Total = $totalPower";
-    $infos[] = "Power info: " . implode(",", $ps);
 }
 
 debug_print(microtime(true));
@@ -617,5 +626,45 @@ SMcli location will be taken from the SMCLI_PATH environment variable if it exis
 EOF;
     set_exit(OK);
     display_output($msg);
+}
+
+function get_smcli_error($code) {
+    $err = [
+        0=>"Successful",
+        1=>"Invalid usage",
+        2=>"Script file does not exist",
+        3=>"Error opening output file",
+        4=>"No storage array at address",
+        5=>"Addresses specify different storage arrays",
+        6=>"No storage array name for host agent connect",
+        7=>"Storage array name not at address",
+        8=>"Storage array name not unique",
+        9=>"Storage array name not in configuration files",
+        10=>"No management class for storage array",
+        11=>"No storage array in configuration file found",
+        12=>"Internal error",
+        13=>"Invalid script syntax",
+        14=>"Unable to communicate with storage array",
+        15=>"Duplicate argument",
+        16=>"Execution error",
+        17=>"No host at address",
+        18=>"World Wide Name not in configuration files",
+        19=>"World Wide Name not at address",
+        20=>"Unknown IP address",
+        21=>"Event monitor configuration file corrupted",
+        22=>"Unable to communicate to event monitor",
+        23=>"Unable to write alert settings",
+        24=>"Wrong organizer node",
+        25=>"Command not available",
+        26=>"Device not in configuration file",
+        27=>"Error updating configuration file",
+        28=>"Unknown host error",
+        29=>"Sender contact information file not found",
+        30=>"Sender contact information file could not be read",
+        31=>"Userdata.txt file exists",
+        32=>"Invalid email alert notification -I value specified",
+        33=>"Invalid email alert notification -f value specified",
+    ];
+    return "SMcli error $code " . (isset($err[$code]) ? $err[$code] : "");
 }
 ?>
