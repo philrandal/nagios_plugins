@@ -455,7 +455,7 @@ function CheckPSUs () {
 binaries="snmpwalk snmpget cut tr sed grep awk"
 
 for required_binary in $binaries; do
-	if which "$required_binary" > /dev/null; then
+	if ! which "$required_binary" > /dev/null; then
 		printf "UNKNOWN: %s: No usable '%s' binary in '%s'\n" "$APPNAME" "$required_binary" "$PATH"
 		exit 3
 	fi
