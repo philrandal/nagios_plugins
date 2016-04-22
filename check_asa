@@ -120,8 +120,8 @@ if [[ "$mode" = "failover" ]]; then
 	mib_failover_prim=".1.3.6.1.4.1.9.9.147.1.2.1.1.1.3.6"
 	mib_failover_sec=".1.3.6.1.4.1.9.9.147.1.2.1.1.1.3.7"
 
-	status_prim=$($snmpget -OnqvU "${snmp_opts[@]}" "$mib_failover_prim")
-	status_sec=$($snmpget -OnqvU "${snmp_opts[@]}" "$mib_failover_sec")
+	status_prim=$($snmpget -OeqvU "${snmp_opts[@]}" "$mib_failover_prim")
+	status_sec=$($snmpget -OeqvU "${snmp_opts[@]}" "$mib_failover_sec")
 
 	if [[ "$status_prim" = "9" ]] && [[ "$status_sec" = "10" ]]; then
 		#primary active, secondary standby
@@ -166,7 +166,7 @@ elif [[ "$mode" = "cpu" ]]; then
 	check_mib=".1.3.6.1.4.1.9.9.109.1.1.1.1.7.1"
 	check_name="CPU usage"
 	check_unit="%"
-	metric=$($snmpget -OnqvU "${snmp_opts[@]}" "$check_mib" 2> /dev/null)
+	metric=$($snmpget -OeqvU "${snmp_opts[@]}" "$check_mib" 2> /dev/null)
 	if [[ "$metric" =~ [^0-9] ]] || [[ -z "$metric" ]]; then
 		message=$(printf 'Unknown: %s' "$metric")
 		exit=3
@@ -192,6 +192,7 @@ elif [[ "$mode" = "temp" ]]; then
 	critical_count=0
 	warning_count=0
 	unknown_count=0
+	# note we want to keep the OID in the output here
 	sensors=$($snmpwalk -Onq "${snmp_opts[@]}" "$sensor_mib" | awk -v mib="$sensor_mib." '/Temp/ {sub(mib,"",$1); print $0;}')
 	while read -r sensor; do
 		if [[ -z "$sensor" ]]; then
@@ -209,8 +210,8 @@ elif [[ "$mode" = "temp" ]]; then
 		# CISCO-ENTITY-SENSOR-EXT-MIB::ceSensorExtThresholdValue
 		thresh_val_mib=".1.3.6.1.4.1.9.9.745.1.1.1.4.$index.1"
 
-		metric=$($snmpget -OnqvU "${snmp_opts[@]}" "$value_mib")
-		critical=$($snmpget -OnqvU "${snmp_opts[@]}" "$thresh_val_mib")
+		metric=$($snmpget -OeqvU "${snmp_opts[@]}" "$value_mib")
+		critical=$($snmpget -OeqvU "${snmp_opts[@]}" "$thresh_val_mib")
 		let warning=critical*75/100
 		if [[ "$metric" =~ [^0-9] ]] || [[ -z "$metric" ]]; then
 			let unknown_count+=1
