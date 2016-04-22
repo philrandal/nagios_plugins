@@ -4,17 +4,17 @@
 #			Dell PowerConnect					#
 #											#
 # check_powerconnect							#
-# 	Version 1.32 (November 3, 2014)				#
+#	Version 1.32 (November 3, 2014)				#
 #											#
 # Authored by Jason Leonard						#
-# 	E-mail: jason_leonard@yahoo.com				#
+#	E-mail: jason_leonard@yahoo.com				#
 #											#
 # Version History								#
 # ---------------------------------------------------- #
 #											#
 #	1,32										#
 #	Minor tweak based on experience with reporting	#
-#	fan status. Previously, based on the wording of	#
+#	fan status. Previously, based on the wording of #
 #	status descriptions, I treated a value of 4 as	#
 #	CRITICAL (shutdown). Occassionaly, I would see	#
 #	our switches throw this value, and then later	#
@@ -27,25 +27,25 @@
 #	was not comfortable having it return OK			#.
 #											#
 #	1.3										#
-#	Incorporated bug fixes thanks to user feedback.	#
-#	Different Dell models didn't behave as expected	#
+#	Incorporated bug fixes thanks to user feedback. #
+#	Different Dell models didn't behave as expected #
 #	because RADLAN OIDs were used. They were repl-	#
 #	aced with official Dell OIDs, so the plugin		#
 #	should work with more models now, old AND new.	#
 #	Thanks to Daniel Lundh for his help here.		#
 #											#
-#	An exception is for temperature information. 	#
+#	An exception is for temperature information.	#
 #	The Dell OID is not available on newer switches,	#
-#	so my plugin only checks RADLAN OIDs for now. 	#
+#	so my plugin only checks RADLAN OIDs for now.	#
 #	If your switch doesn't support this, you won't	#
 #	be able to get these values until I make the		#
 #	plugin check all possible locations.			#
 #											#
 #	Port number check now accepts multiple ports,	#
-#	just separate them by a comma in your argument.	#
+#	just separate them by a comma in your argument. #
 #											#
-#	Rewrote "uptime" check to convert time to human	#
-#	readable format. Thanks to Fernando Ulisses dos	#
+#	Rewrote "uptime" check to convert time to human #
+#	readable format. Thanks to Fernando Ulisses dos #
 #	Santos for his help on that.					#
 #											#
 #	Added basic "Global Health" check,				#
@@ -61,10 +61,10 @@
 #	This plugin will check any Dell PowerConnect		#
 # switch. As with most of my plugins, it came out of a #
 # specific need my company had when my boss decided to	#
-# purchase PowerConnect switches for a remote site.	#
+# purchase PowerConnect switches for a remote site. #
 # (we are traditionally a Cisco shop). When searching	#
-# for plugins, I found FMFreak's PowerConnect plugin, 	#
-# but it lacked ability to check environmentals. So, 	#
+# for plugins, I found FMFreak's PowerConnect plugin,	#
+# but it lacked ability to check environmentals. So,	#
 # this script was designed to do precisely that. I	#
 # also added the ability for it to report asset		#
 # information.									#
@@ -72,10 +72,10 @@
 #	Most options for this program are fairly self-	#
 # explanatory. The only thing worth nothing is that,	#
 # in	order to check a specific port, the -p parameter	#
-# has to be used in addition to specifying -t port.	#
+# has to be used in addition to specifying -t port. #
 #											#
 #	The same applies for environmentals. I decided	#
-# to allow them to be checked individually, but may 	#
+# to allow them to be checked individually, but may		#
 # add an option later to also check them all at once	#
 # (like my HP server checks).						#
 #											#
@@ -86,9 +86,9 @@
 ########################################################
 
 #########################################################
-##		     GLOBAL VARIABLES					##
+##			 GLOBAL VARIABLES					##
 #########################################################
-APPNAME=$(basename $0)
+APPNAME=$(basename "$0")
 VERSION="1.3"
 EXIT_CODE=0
 EXIT_STRING=""
@@ -110,7 +110,7 @@ ARG_TOKEN=","
 SEPARATOR=" "
 
 #########################################################
-##		    print_help Function					##
+##			print_help Function					##
 #########################################################
 # Prints out user help and gives examples of proper	 #
 # plugin usage									 #
@@ -130,34 +130,34 @@ function print_help () {
 	echo "---------------------------------------------------------------------"
 	echo "Usable Options:"
 	echo '	 -C <community>'
-	echo '	     The SNMP Community variable - use the name of your SNMP community with read privileges'
-	echo '	     By default, the community is assumed to be public'
+	echo '		 The SNMP Community variable - use the name of your SNMP community with read privileges'
+	echo '		 By default, the community is assumed to be public'
 	echo '	 -H <hostname>'
 	echo '	 (required option)'
-	echo '	     The IP address or hostname of the system to check'
+	echo '		 The IP address or hostname of the system to check'
 	echo '	 -S <text string>'
-	echo '	     assign a particular string as the separator for consumables.'
-	echo '	     Default is " " to conform to Nagios plugin development guidelines'
+	echo '		 assign a particular string as the separator for consumables.'
+	echo '		 Default is " " to conform to Nagios plugin development guidelines'
 	echo '	 -w <warn>'
-	echo '       warning threshold (degrees)'
+	echo '		 warning threshold (degrees)'
 	echo '	 -c <crit>'
-	echo '	     critical threshold (degrees)'
+	echo '		 critical threshold (degrees)'
 	echo '	 -t { assets | uptime | ports | port | health | temps | fans | psus }'
-	echo '   (required option)'
+	echo '	 (required option)'
 	echo '		type of check to perform'
 	echo '	 -p <port number | comma-separated list of port numbers>'
-	echo "	 	specify a port number, or list of ports (comma-separated) to be checked (only for the '-t port' option!)"
+	echo "		specify a port number, or list of ports (comma-separated) to be checked (only for the '-t port' option!)"
 	echo '	 -h'
-	echo '	     show this help screen'
+	echo '		 show this help screen'
 	echo '	 -V'
-	echo '	     show the current version of the plugin'
+	echo '		 show the current version of the plugin'
 	echo ""
 	echo "Examples:"
-	echo "    $APPNAME -H hostname -C public -t port -p 42"
-	echo ' 			to check status of port 42'
-	echo "    $APPNAME -H hostname -C public -t psus"
+	echo "	  $APPNAME -H hostname -C public -t port -p 42"
+	echo '			to check status of port 42'
+	echo "	  $APPNAME -H hostname -C public -t psus"
 	echo '			to check status of power supplies'
-	echo "    $APPNAME -H hostname -C public -t temps -w 60 -c 70"
+	echo "	  $APPNAME -H hostname -C public -t temps -w 60 -c 70"
 	echo '			to check thermal temperatures'
 	echo ""
 	echo "---------------------------------------------------------------------"
@@ -168,18 +168,18 @@ function print_help () {
 
 
 #########################################################
-##		    CheckPorts function					##
+##			CheckPorts function					##
 #########################################################
 # Checks general status of all ports in the stack		 #
 #########################################################
 function CheckPorts () {
 	## Uses ifOperStatus
-	PORT_STATUS=$(snmpwalk -v 2c -Ovq -c $COMMUNITY $HOST_NAME .1.3.6.1.2.1.2.2.1.8 2>/dev/null)
+	PORT_STATUS=$(snmpwalk -v 2c -Ovq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.2.1.2.2.1.8 2>/dev/null)
 
 	NUM_PORTS_DOWN=$(echo "$PORT_STATUS" | grep -c -e "down" -e "2")
 	NUM_PORTS_UP=$(echo "$PORT_STATUS" | grep -c -e "up" -e "1")
 
-	if [ "$NUM_PORTS_UP" -ge 0 ] && [ "$NUM_PORTS_DOWN" -ge 0 ]; then
+	if [[ "$NUM_PORTS_UP" -ge 0 ]] && [[ "$NUM_PORTS_DOWN" -ge 0 ]]; then
 		EXIT_STRING="OK: Ports Up - $NUM_PORTS_UP, Ports Down - $NUM_PORTS_DOWN"
 		PORTS_EXIT_STATUS=0
 	else
@@ -192,12 +192,12 @@ function CheckPorts () {
 
 
 #########################################################
-##		    CheckPort function					##
+##			CheckPort function					##
 #########################################################
 # Checks status of a single port in the stack		 #
 #########################################################
 function CheckPort () {
-	PORT_STATUS=$(snmpget -v 2c -Ovq -c $COMMUNITY -On $HOST_NAME .1.3.6.1.2.1.2.2.1.8.$1 2>/dev/null)
+	PORT_STATUS=$(snmpget -v 2c -Ovq -c "$COMMUNITY" -On "$HOST_NAME" ".1.3.6.1.2.1.2.2.1.8.$1" 2>/dev/null)
 
 	case "$PORT_STATUS" in
 		"down(2)"|"down"|"2")
@@ -230,44 +230,49 @@ function CheckTemps () {
 	local TEMPS_EXIT_STATUS=0
 	local TEMP_STATUS=""
 	local TEMP_OID=""
+	local DELL_STATUS=""
+	local FASTPATH_STATUS=""
+	local RADLAN_STATUS=""
+	local TEMP_VALUES=""
+	local TEMP_IDS=""
 
 	# Determine which OID tree is using the temperatures
-	local DELL_STATUS=$(snmpwalk -v 2c -Onq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.5000.2.89.53.15.1.10 2>/dev/null)
-	local FASTPATH_STATUS=$(snmpwalk -v 2c -Onq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.43.1.8.1.3 2>/dev/null)
-	local RADLAN_STATUS=$(snmpwalk -v 2c -Onq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.89.53.15.1.10 2>/dev/null)
+	DELL_STATUS=$(snmpwalk -v 2c -Onq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.4.1.674.10895.5000.2.89.53.15.1.10 2>/dev/null)
+	FASTPATH_STATUS=$(snmpwalk -v 2c -Onq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.4.1.674.10895.5000.2.6132.1.1.43.1.8.1.3 2>/dev/null)
+	RADLAN_STATUS=$(snmpwalk -v 2c -Onq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.4.1.89.53.15.1.10 2>/dev/null)
 
 	# snmpwalk doesn't behave w/r/t exit code and stderr, so just check for "no such object at this oid"
-	if [ "$DELL_STATUS" != *OID* ]; then
+	if [[ "$DELL_STATUS" != *OID* ]]; then
 		TEMP_STATUS=$DELL_STATUS
 		TEMP_OID=.1.3.6.1.4.1.674.10895.5000.2.89.53.15.1.9
 	fi
 
-	if [ "$FASTPATH_STATUS" != *OID* ]; then
+	if [[ "$FASTPATH_STATUS" != *OID* ]]; then
 		TEMP_STATUS=$FASTPATH_STATUS
 		TEMP_OID=.1.3.6.1.4.1.674.10895.5000.2.6132.1.1.43.1.8.1.5
 	fi
 
-	if [ "$RADLAN_STATUS" != *OID* ]; then
+	if [[ "$RADLAN_STATUS" != *OID* ]]; then
 		TEMP_STATUS=$RADLAN_STATUS
 		TEMP_OID=.1.3.6.1.4.1.89.53.15.1.9
 	fi
 
-	local TEMP_VALUES=$(snmpwalk -v 2c -Onq -c $COMMUNITY $HOST_NAME $TEMP_OID 2>/dev/null)
-	local TEMP_IDS=$(echo ${TEMP_VALUES/$TEMP_OID./} | awk '{print $1}')
+	TEMP_VALUES=$(snmpwalk -v 2c -Onq -c "$COMMUNITY" "$HOST_NAME" "$TEMP_OID" 2>/dev/null)
+	TEMP_IDS=$(echo "${TEMP_VALUES/$TEMP_OID./}" | awk '{print $1}')
 
-	for TEMP_ID in $(echo "$TEMP_IDS")
+	for TEMP_ID in $TEMP_IDS
 	do
-		STATUS=$(echo "$TEMP_STATUS" | awk -v id=$TEMP_ID 'NR==id {print $2}')
-		if [ $STATUS -gt 1 ]; then
+		STATUS=$(echo "$TEMP_STATUS" | awk -v id="$TEMP_ID" 'NR==id {print $2}')
+		if [[ $STATUS -gt 1 ]]; then
 			EXIT_STRING="$EXIT_STRING UNKNOWN: Unit $TEMP_ID temperature cannot be read from the sensor!$SEPARATOR";
 			TEMPS_EXIT_STATUS=3
 		else
-			TEMP=$(echo "$TEMP_VALUES" | awk -v id=$TEMP_ID 'NR==id {print $2}')
-			if [ $TEMP -ge $CRITICAL ]; then
+			TEMP=$(echo "$TEMP_VALUES" | awk -v id="$TEMP_ID" 'NR==id {print $2}')
+			if [[ $TEMP -ge $CRITICAL ]]; then
 				EXIT_STRING="$EXIT_STRING CRITICAL: Unit $TEMP_ID temperature of $TEMP degrees exceeds threshold of $CRITICAL!$SEPARATOR";
 				TEMPS_EXIT_STATUS=2
 			else
-				if [ $TEMP -lt $CRITICAL ] && [ $TEMP -ge $WARNING ]; then
+				if [[ $TEMP -lt $CRITICAL ]] && [[ $TEMP -ge $WARNING ]]; then
 					EXIT_STRING="$EXIT_STRING WARNING: Unit $TEMP_ID temperature of $TEMP degrees exceeds threshold of $WARNING!$SEPARATOR";
 					TEMPS_EXIT_STATUS=1
 				else
@@ -285,7 +290,7 @@ function CheckTemps () {
 }
 
 #########################################################
-##			    CheckFans function				##
+##				CheckFans function				##
 #########################################################
 # Checks status of fans for a stack				 #
 #########################################################
@@ -294,16 +299,16 @@ function CheckFans () {
 	FAN_EXIT_STATUS=0
 
 	# This uses the Dell OID
-	FAN_CONDITIONS=$(snmpwalk -v 2c -Ovq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.3000.1.2.110.7.1.1.3 2>/dev/null)
+	FAN_CONDITIONS=$(snmpwalk -v 2c -Ovq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.4.1.674.10895.3000.1.2.110.7.1.1.3 2>/dev/null)
 
 	NUM_FANS=$(echo "$FAN_CONDITIONS" | wc -l)
 
 	# This uses the Dell OID
-	FAN_DESCRIPTIONS=$(snmpwalk -v 2c -Ovq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.3000.1.2.110.7.1.1.2 2>/dev/null)
+	FAN_DESCRIPTIONS=$(snmpwalk -v 2c -Ovq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.4.1.674.10895.3000.1.2.110.7.1.1.2 2>/dev/null)
 
 	CURRENT_FAN=1
 
-	while [ $CURRENT_FAN -le $NUM_FANS ]; do
+	while [[ $CURRENT_FAN -le $NUM_FANS ]]; do
 		FAN_DESCR=$(echo "$FAN_DESCRIPTIONS" | tr -d "\"" | tr "_" " " | awk NR=="$CURRENT_FAN")
 		FAN_STATUS=$(echo "$FAN_CONDITIONS" | awk NR=="$CURRENT_FAN")
 
@@ -349,7 +354,7 @@ function CheckFans () {
 			;;
 		esac
 
-		CURRENT_FAN=$[ $CURRENT_FAN+1 ];
+		(( ++CURRENT_FAN ));
 	done
 
 	return $FAN_EXIT_STATUS
@@ -358,21 +363,21 @@ function CheckFans () {
 
 
 #########################################################
-##		    CheckPSUs function					##
+##			CheckPSUs function					##
 #########################################################
 # Checks status of power supplies for a stack		 #
 #########################################################
 
 function CheckPSUs () {
 	PSU_EXIT_STATUS=0
-	PSU_CONDITIONS=$(snmpwalk -v 2c -Ovq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.3000.1.2.110.7.2.1.3 2>/dev/null)
+	PSU_CONDITIONS=$(snmpwalk -v 2c -Ovq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.4.1.674.10895.3000.1.2.110.7.2.1.3 2>/dev/null)
 	NUM_PSUS=$(echo "$PSU_CONDITIONS" | wc -l)
-	PSU_DESCRIPTIONS=$(snmpwalk -v 2c -Ovq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.3000.1.2.110.7.2.1.2 2>/dev/null)
-	PSU_TYPES=$(snmpwalk -v 2c -Ovq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.3000.1.2.110.7.2.1.4 2>/dev/null)
+	PSU_DESCRIPTIONS=$(snmpwalk -v 2c -Ovq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.4.1.674.10895.3000.1.2.110.7.2.1.2 2>/dev/null)
+	PSU_TYPES=$(snmpwalk -v 2c -Ovq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.4.1.674.10895.3000.1.2.110.7.2.1.4 2>/dev/null)
 
 	CURRENT_PSU=1
 
-	while [ $CURRENT_PSU -le $NUM_PSUS ]; do
+	while [[ $CURRENT_PSU -le $NUM_PSUS ]]; do
 		PSU_DESCR=$(echo "$PSU_DESCRIPTIONS" | tr -d "\"" | tr "_" " " | awk NR=="$CURRENT_PSU")
 
 		PSU_TYPE=$(echo "$PSU_TYPES" | awk NR=="$CURRENT_PSU" )
@@ -398,34 +403,34 @@ function CheckPSUs () {
 			PSU_EXIT_STATUS=0
 			;;
 			2)
-			if [ "$PSU_EXIT_STATUS" -lt 1 ]; then
+			if [[ "$PSU_EXIT_STATUS" -lt 1 ]]; then
 			# only set WARNING if nothing else has yet
 				PSU_EXIT_STATUS=1
 			fi
 			EXIT_STRING="$EXIT_STRING WARNING: $PSU_DESCR compromised!$SEPARATOR"
 			;;
 			3)
-			if [ "$PSU_EXIT_STATUS" -lt 2 ]; then
+			if [[ "$PSU_EXIT_STATUS" -lt 2 ]]; then
 			# only set CRITICAL if nothing else has yet
 				PSU_EXIT_STATUS=2
 			fi
 			EXIT_STRING="$EXIT_STRING CRITICAL: $PSU_DESCR critical!$SEPARATOR"
 			;;
 			4)
-			if [ "$PSU_EXIT_STATUS" -lt 2 ]; then
+			if [[ "$PSU_EXIT_STATUS" -lt 2 ]]; then
 			# only set CRITICAL if nothing else has yet
 				PSU_EXIT_STATUS=2
 			fi
 			EXIT_STRING="$EXIT_STRING CRITICAL: $PSU_DESCR critical! Please shutdown the unit!$SEPARATOR"
 			;;
 			5)
-			if [ "$PSU_EXIT_STATUS" -eq 0 ]; then
+			if [[ "$PSU_EXIT_STATUS" -eq 0 ]]; then
 				PSU_EXIT_STATUS=3
 			fi
 			EXIT_STRING="$EXIT_STRING UNKNOWN: $PSU_DESCR not present - please ensure you are monitoring the right device and IP address.$SEPARATOR"
 			;;
 			6)
-			if [ "$PSU_EXIT_STATUS" -lt 2 ]; then
+			if [[ "$PSU_EXIT_STATUS" -lt 2 ]]; then
 			# only set CRITICAL if nothing else has yet
 				PSU_EXIT_STATUS=2
 			fi
@@ -433,7 +438,7 @@ function CheckPSUs () {
 			;;
 		esac
 
-		CURRENT_PSU=$[ $CURRENT_PSU+1 ]
+		(( ++CURRENT_PSU ))
 	done
 
 	return $PSU_EXIT_STATUS
@@ -446,13 +451,12 @@ function CheckPSUs () {
 #########################################################
 
 # Check that all required binaries for the script are available
-# 	EXIT with an UNKNOWN status if not
+#	EXIT with an UNKNOWN status if not
 binaries="snmpwalk snmpget cut tr sed grep awk"
 
 for required_binary in $binaries; do
-	which $required_binary > /dev/null
-	if [ "$?" != '0' ];then
-		printf "UNKNOWN: $APPNAME: No usable '$required_binary' binary in '$PATH'\n"
+	if which "$required_binary" > /dev/null; then
+		printf "UNKNOWN: %s: No usable '%s' binary in '%s'\n" "$APPNAME" "$required_binary" "$PATH"
 		exit 3
 	fi
 done
@@ -488,36 +492,36 @@ do
 		exit $?
 		;;
 		"V")
-		printf "$APPNAME - version $VERSION\n"
+		printf "%s - version %s\n" "$APPNAME" "$VERSION"
 		exit $EXIT_CODE
 		;;
 	esac
 done
 
 # Make sure all necessary arguments were given; EXIT with an UNKNOWN status if not
-if [ -z "$COMMUNITY" ] || [ -z "$HOST_NAME" ];then
+if [[ -z "$COMMUNITY" ]] || [[ -z "$HOST_NAME" ]]; then
 	EXIT_STRING="UNKNOWN: Hostname and/or Community variables have not been set!\n"
 	EXIT_CODE=3
 else
 	# Determine health of most major components
-	MODEL=$(snmpwalk -v 2c -Ovq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.3000.1.2.100.1.0 2>/dev/null | tr -d "\"")
+	MODEL=$(snmpwalk -v 2c -Ovq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.4.1.674.10895.3000.1.2.100.1.0 2>/dev/null | tr -d "\"")
 
-	if [ $? -ne 0 ]; then
-		#Check  for server response - is SNMP even setup okay?
+	if [[ $? -ne 0 ]]; then
+		#Check	for server response - is SNMP even setup okay?
 		EXIT_STRING="WARNING: No SNMP response from $HOST_NAME! Make sure host is up and SNMP is configured properly.\n"
 		EXIT_CODE=1
 	else
 		case "$CHECK_TYPE" in
 			"assets")
-				SWITCH_IDS=$(snmpwalk -v 2c -Ovq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.3000.1.2.100.8.1.1 2>/dev/null)
-				for SWITCH_ID in $(echo "$SWITCH_IDS")
+				SWITCH_IDS=$(snmpwalk -v 2c -Ovq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.4.1.674.10895.3000.1.2.100.8.1.1 2>/dev/null)
+				for SWITCH_ID in $SWITCH_IDS
 				do
-					FIRMWARE=$(snmpwalk -v 2c -Ovq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.3000.1.2.100.4.0 2>/dev/null | tr -d "\"")
-					SERIAL=$(snmpwalk -v 2c -Ovq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.3000.1.2.100.8.1.2.$SWITCH_ID 2>/dev/null | tr -d "\"")
+					FIRMWARE=$(snmpwalk -v 2c -Ovq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.4.1.674.10895.3000.1.2.100.4.0 2>/dev/null | tr -d "\"")
+					SERIAL=$(snmpwalk -v 2c -Ovq -c "$COMMUNITY" "$HOST_NAME" ".1.3.6.1.4.1.674.10895.3000.1.2.100.8.1.2.$SWITCH_ID" 2>/dev/null | tr -d "\"")
 					# The service tag can also be located at the OID .1.3.6.1.4.1.674.10895.3000.1.2.100.8.1.5
-					SVC_TAG=$(snmpwalk -v 2c -Ovq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.3000.1.2.100.8.1.4.$SWITCH_ID 2>/dev/null | tr -d "\"")
+					SVC_TAG=$(snmpwalk -v 2c -Ovq -c "$COMMUNITY" "$HOST_NAME" ".1.3.6.1.4.1.674.10895.3000.1.2.100.8.1.4.$SWITCH_ID" 2>/dev/null | tr -d "\"")
 
-					if [ "$SWITCH_ID" -eq 1 ]; then
+					if [[ "$SWITCH_ID" -eq 1 ]]; then
 						EXIT_STRING="Unit $SWITCH_ID - $MODEL, Serial # $SERIAL, Service Tag $SVC_TAG, Firmware - $FIRMWARE."
 					else
 						EXIT_STRING="$EXIT_STRING$SEPARATOR Unit $SWITCH_ID - $MODEL, Serial # $SERIAL, Service Tag $SVC_TAG, Firmware - $FIRMWARE"
@@ -525,15 +529,15 @@ else
 				done
 				;;
 			"uptime")
-				UPTIME=$(snmpget -O avq  -v 1 -c $COMMUNITY $HOST_NAME .1.3.6.1.2.1.1.3.0 2>/dev/null)
-				TICKS=$(snmpwalk -v 2c -On -c $COMMUNITY $HOST_NAME .1.3.6.1.2.1.1.3.0 2>/dev/null | cut -f4 -d ' '| sed 's/(//g'| sed 's/)//g')
-				DAYS=$(echo $UPTIME | cut -d ":" -f 1)
-				TIME=$(echo $UPTIME | cut -d ":" -f 2-)
-				if [ "$TICKS" -lt 259200 ] && [ "$UPTIME" != '' ]; then
+				UPTIME=$(snmpget -O avq	 -v 1 -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.2.1.1.3.0 2>/dev/null)
+				TICKS=$(snmpwalk -v 2c -On -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.2.1.1.3.0 2>/dev/null | cut -f4 -d ' '| sed 's/(//g'| sed 's/)//g')
+				DAYS=$(echo "$UPTIME" | cut -d ":" -f 1)
+				TIME=$(echo "$UPTIME" | cut -d ":" -f 2-)
+				if [[ "$TICKS" -lt 259200 ]] && [[ "$UPTIME" != '' ]]; then
 					EXIT_STRING="WARNING: Uptime = $UPTIME. Unit restarted once";
 					EXIT_CODE=1
 				else
-					if [ "$TICKS" -gt 259200 ] && [ "$UPTIME" != '' ]; then
+					if [[ "$TICKS" -gt 259200 ]] && [[ "$UPTIME" != '' ]]; then
 						EXIT_STRING="OK: Uptime = $DAYS days, $TIME."
 					else
 						EXIT_STRING="CRITICAL: Unit may be down!";
@@ -552,13 +556,13 @@ else
 					CheckPort "$CURRENT_PORT"
 					CURRENT_PORT_STATUS=$?
 
-					if [ "$CURRENT_PORT_STATUS" -gt "$EXIT_CODE" ]; then
+					if [[ "$CURRENT_PORT_STATUS" -gt "$EXIT_CODE" ]]; then
 						EXIT_CODE="$CURRENT_PORT_STATUS"
 					fi
 				done
 				;;
 			"health")
-				GLOBALHEALTH=$(snmpwalk -v 2c -Ovq -c $COMMUNITY $HOST_NAME .1.3.6.1.4.1.674.10895.3000.1.2.110.1.0 2>/dev/null)
+				GLOBALHEALTH=$(snmpwalk -v 2c -Ovq -c "$COMMUNITY" "$HOST_NAME" .1.3.6.1.4.1.674.10895.3000.1.2.110.1.0 2>/dev/null)
 				case "$GLOBALHEALTH" in
 					3)
 					EXIT_STRING="OK: System hardware is okay."
@@ -596,10 +600,10 @@ fi
 
 # If the program hasn't exited already, then a check was run okay and we can quit.
 EXIT_STRING=${EXIT_STRING# }
-if [ "$PERFDAT" == "" ]; then
-	printf "$EXIT_STRING\n"
+if [[ -z "$PERFDAT" ]]; then
+	printf "%s\n" "$EXIT_STRING"
 else
-	printf "$EXIT_STRING|$PERFDAT\n"
+	printf "%s|%s\n" "$EXIT_STRING" "$PERFDAT"
 fi
 
 exit $EXIT_CODE
