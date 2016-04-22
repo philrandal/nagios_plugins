@@ -1,0 +1,250 @@
+#!/bin/bash
+
+# check_asa Nagios plugin to check health of Cisco ASA (may also work on PIX)
+# Copyright (C) 2016 Michael Newton
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# Based very very loosely on work found at https://exchange.nagios.org/directory/Plugins/Hardware/Network-Gear/Cisco/Cisco--2D-Check-firewall-ASA-and-PIX/details
+
+name=$(basename "$0")
+usage="
+Usage:
+    $name -M <mode> -H <hostname> [-2] [-p <port>] [-C <community>] [-t transport] [-w <warning>] [-c <critical>] [-f]
+    $name -M <mode> -H <hostname> -3 -l <secName> [-t transport] [-L <protocolList>] [-x <authPassword>]
+        [-X <privPassword>] [-w <warning>] [-c <critical>] [-f]
+    $name -h
+
+    -M mode             Polling mode (failover, cpu, temp)
+    -H hostname         Hostname
+    -p port             SNMP port
+    -C community        SNMP version 1/2c community (default public)
+    -2                  Use SNMP version 2c (default 1)
+    -3                  Use SNMP version 3 (default 1)
+    -t transport        SNMP transport (udp, tcp, udp6, tcp6; default udp)
+    -l secName          SNMP v3 username
+    -L protocolList     SNMP v3 authentication, privacy protocols (default md5,des)
+    -x authPassword     SNMP v3 authentication password
+    -X privPassword     SNMP v3 privacy password
+    -w warning          Warning threshold for CPU (%) checks
+    -c critical         Critical threshold for CPU (%) checks
+    -f                  Output performance data
+    -h                  Help (print command usage and quit)
+"
+
+# set some defaults
+version="1"
+community="public"
+port="161"
+protocols="md5,des"
+transport="udp"
+snmp_opts=()
+message=""
+ext_message=""
+exit="0"
+generate_perf_data="0"
+perf_data=""
+snmpget="/usr/bin/snmpget"
+snmpwalk="/usr/bin/snmpwalk"
+
+while getopts "M:H:p:C:23l:L:x:X:w:c:fh" option; do
+	case $option in
+		M) mode=$OPTARG;;
+		H) hostname=$OPTARG;;
+		p) port=$OPTARG;;
+		2) version=2c;;
+		3) version=3;;
+		C) community=$OPTARG;;
+		l) secName=$OPTARG;;
+		L) protocols=$OPTARG;;
+		x) authPassword=$OPTARG;;
+		X) privPassword=$OPTARG;;
+		w) warning=$OPTARG;;
+		c) critical=$OPTARG;;
+		f) generate_perf_data=1;;
+		h) echo "$usage" && exit 3;;
+	esac
+done
+
+if [[ -z "$hostname" ]] || [[ -z "$mode" ]]
+then
+	echo "Unknown: Missing hostname or mode parameter"
+	echo "$usage"
+	exit 3
+fi
+
+if [[ "$version" = "3" ]]; then
+	if [[ -z "$secName" ]]; then
+		echo "Unknown: Missing SNMP v3 security name"
+		echo "$usage"
+		exit 3
+	fi
+	snmp_opts=(${snmp_opts[@]} "-v" "$version" "-u" "$secName")
+	if [[ -z "$authPassword" ]]; then
+		secLevel="NoAuthNoPriv"
+	else
+		authProtocol=${protocols%,*}
+		privProtocol=${protocols#*,}
+		if [[ -z "$privPassword" ]]; then
+			secLevel="AuthNoPriv"
+		else
+			secLevel="AuthPriv"
+			snmp_opts=(${snmp_opts[@]} "-x" "$privProtocol" "-X" "$privPassword")
+		fi
+		snmp_opts=(${snmp_opts[@]} "-l" "$secLevel" "-a" "$authProtocol" "-A" "$authPassword")
+	fi
+	snmp_opts=(${snmp_opts[@]} "$transport:$hostname:$port")
+else
+	if [[ -z "$community" ]]; then
+		echo "Unknown: Missing community parameter"
+		echo "$usage"
+		exit 3
+	fi
+	snmp_opts=(${snmp_opts[@]} "-v" "$version" "-c" "$community" "$transport:$hostname:$port")
+fi
+
+if [[ "$mode" = "failover" ]]; then
+	failover_status=([3]=Down [4]=Error [9]=Active [10]=Standby)
+	mib_failover_prim=".1.3.6.1.4.1.9.9.147.1.2.1.1.1.3.6"
+	mib_failover_sec=".1.3.6.1.4.1.9.9.147.1.2.1.1.1.3.7"
+
+	status_prim=$($snmpget -OnqvU "${snmp_opts[@]}" "$mib_failover_prim")
+	status_sec=$($snmpget -OnqvU "${snmp_opts[@]}" "$mib_failover_sec")
+
+	if [[ "$status_prim" = "9" ]] && [[ "$status_sec" = "10" ]]; then
+		#primary active, secondary standby
+		devices=2
+		status=OK
+		exit=0
+
+	elif [[ "$status_prim" = "10" ]] && [[ "$status_sec" = "9" ]]; then
+		#secondary active, primary standby
+		devices=2
+		status=Warning
+		exit=1
+
+	elif ([[ "$status_prim" = "9" ]] && [[ "$status_sec" = "4" ]]) || ([[ "$status_prim" = "4" ]] && [[ "$status_sec" = "9" ]]); then
+		#one is offline
+		devices=1
+		status=Warning
+		exit=1
+
+	elif [[ "$status_prim" = 4 ]] && [[ "$status_sec" = 4 ]]; then
+		#both are offline
+		devices=0
+		status=Critical
+		exit=2
+
+	else
+		devices=0
+		status=Unknown
+		exit=3
+	fi
+
+	message=$(printf '%s: Primary=%s, Secondary=%s\n' "$status" "${failover_status[$status_prim]}" "${failover_status[$status_sec]}")
+	perf_data=$(printf 'Active_devices=%d' $devices)
+
+elif [[ "$mode" = "cpu" ]]; then
+	if [[ -z "$warning" ]] || [[ -z "$critical" ]]; then
+		echo "Error - Missing warning or critical thresholds"
+		echo "$usage"
+		exit 3
+	fi
+
+	check_mib=".1.3.6.1.4.1.9.9.109.1.1.1.1.7.1"
+	check_name="CPU usage"
+	check_unit="%"
+	metric=$($snmpget -OnqvU "${snmp_opts[@]}" "$check_mib" 2> /dev/null)
+	if [[ "$metric" =~ [^0-9] ]] || [[ -z "$metric" ]]; then
+		message=$(printf 'Unknown: %s' "$metric")
+		exit=3
+	elif [[ $metric -ge $critical ]]; then
+		message=$(printf 'Critical: %s %d%s' "$check_name" "$metric" "$check_unit")
+		exit=2
+	elif [[ $metric -ge $warning ]]; then
+		message=$(printf 'Warning: %s %d%s' "$check_name" "$metric" "$check_unit")
+		exit=1
+	else
+		message=$(printf 'OK: %s %d%s' "$check_name" "$metric" "$check_unit");
+		exit=0
+	fi
+	perf_data=$(printf '%s=%d%s;%d;%d' "${check_name/ /_}" "$metric" "$check_unit" "$warning" "$critical")
+
+elif [[ "$mode" = "temp" ]]; then
+	check_name="Temperature"
+	check_unit="°C"
+	sensor_mib=".1.3.6.1.2.1.47.1.1.1.1.2"
+	cumulative=0
+	count=0
+	message=""
+	critical_count=0
+	warning_count=0
+	unknown_count=0
+	sensors=$($snmpwalk -Onq "${snmp_opts[@]}" "$sensor_mib" | awk -v mib="$sensor_mib." '/Temp/ {sub(mib,"",$1); print $0;}')
+	while read -r sensor; do
+		if [[ -z "$sensor" ]]; then
+			message="Unknown: could not retrieve sensors"
+			exit=3
+			continue
+		fi
+		index=${sensor%% *}
+		desc=${sensor#* }
+
+		# ENTITY-SENSOR-MIB::entPhySensorValue
+		value_mib=".1.3.6.1.2.1.99.1.1.1.4.$index"
+		# CISCO-ENTITY-SENSOR-EXT-MIB::ceSensorExtThresholdSeverity
+		thresh_type_mib=".1.3.6.1.4.1.9.9.745.1.1.1.2.$index"
+		# CISCO-ENTITY-SENSOR-EXT-MIB::ceSensorExtThresholdValue
+		thresh_val_mib=".1.3.6.1.4.1.9.9.745.1.1.1.4.$index.1"
+
+		metric=$($snmpget -OnqvU "${snmp_opts[@]}" "$value_mib")
+		critical=$($snmpget -OnqvU "${snmp_opts[@]}" "$thresh_val_mib")
+		let warning=critical*75/100
+		if [[ "$metric" =~ [^0-9] ]] || [[ -z "$metric" ]]; then
+			let unknown_count+=1
+			metric=0
+		elif [[ "$metric" -ge "$critical" ]]; then
+			let critical_count+=1
+		elif [[ "$metric" -ge "$warning" ]]; then
+			let warning_count+=1
+		fi
+		perf_data=$(printf '%ssensor%d=%d;%d;%d ' "$perf_data" "$index" "$metric" "$warning" "$critical")
+		ext_message=$(printf '%s\n%s %d%s\n' "$ext_message" "$desc" "$metric" "$check_unit")
+		let cumulative+=metric
+		let count+=1
+	done <<< "$sensors"
+	if [[ $count -gt 0 ]]; then
+		let metric=cumulative/count
+		if [[ $critical_count -gt 0 ]]; then
+			status="Critical"
+			exit=1
+		elif [[ $warning_count -gt 0 ]]; then
+			status="Warning"
+			exit=2
+		elif [[ $unknown_count -gt 0 ]]; then
+			status="Unknown"
+			exit=3
+		else
+			status="OK"
+			exit=0
+		fi
+		message="$status: Average $check_name $metric$check_unit";
+	fi
+fi
+
+[[ $generate_perf_data = 1 ]] && echo "$message|$perf_data" || echo "$message"
+echo "$ext_message"
+
+exit $exit
