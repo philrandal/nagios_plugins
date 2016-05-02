@@ -76,6 +76,8 @@ state_critical=2    # define the exit code if status is Critical
 state_unknown=3     # define the exit code if status is Unknown
 crit="No"       # what is the answer of MySQL Slave_SQL_Running for a Critical status?
 ok="Yes"        # what is the answer of MySQL Slave_SQL_Running for an OK status?
+host="localhost"
+port="3306"
 
 for cmd in mysql awk grep [; do
     if ! which "$cmd" > /dev/null 2>&1; then
