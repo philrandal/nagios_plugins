@@ -18,12 +18,14 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 name=$(basename "$0")
+configfile="~/.doctlcfg"
+
 usage="
 Usage:
     $name [-t token] [-w <warning>] [-c <critical>] [-f]
     $name -h
 
-    -t token            DigitalOcean API token, will use ~/.doctlcfg if not supplied
+    -t token            DigitalOcean API token, will use $configfile if not supplied
     -w warning          Warning threshold for inactive droplets;
                             specify count (e.g. 4) or percent (e.g. 25%)
     -c critical         Critical threshold for inactive droplets;
@@ -45,8 +47,8 @@ while getopts "t:w:c:fh" option; do
 	esac
 done
 
-if [[ -z "$token" ]] && [[ ! -e "~/.doctlcfg" ]]; then
-	echo "UNKNOWN - No token specified, and could not find ~/.doctlcfg"
+if [[ -z "$token" ]] && [[ ! -e $configfile ]]; then
+	echo "UNKNOWN - No token specified, and could not find $configfile"
 	exit 3
 fi
 
@@ -71,7 +73,7 @@ offpercent=${offdrops#*=}
 # Account status
 acctstat=$(echo "$account" | awk 'NR>1{print $5}')
 
-exitcode=1
+exitcode=0
 
 if [[ $warning == *% ]] && [[ $offpercent -ge ${warning%\%} ]]; then
 	exitcode=2
@@ -89,7 +91,7 @@ elif [[ $acctstat == "locked" ]]; then
 	exitcode=1
 fi
 
-case exitcode in
+case $exitcode in
 0)
 	result="OK"
 	;;
