@@ -19,6 +19,7 @@
 
 name=$(basename "$0")
 configfile="$HOME/.doctlcfg"
+cmd="doctl"
 
 usage="
 Usage:
@@ -55,12 +56,19 @@ if [[ -z "$token" ]] && [[ ! -e $configfile ]]; then
 	exit 3
 fi
 
+PATH="$HOME/bin:/usr/local/bin:/usr/local/sbin:$PATH"
+cmd=$(which "$cmd" &> /dev/null)
+if [[ -z $cmd ]]; then
+    echo "UNKNOWN - Could not find doctl in $PATH"
+    exit 3
+fi
+
 if [[ ! -z $token ]]; then
 	params=(-t "$token")
 else
 	params=()
 fi
-cmd=(doctl $params)
+cmd=($cmd $params)
 
 # The full list
 droplets=$($cmd compute droplet list)
