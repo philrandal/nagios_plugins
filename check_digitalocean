@@ -1,0 +1,113 @@
+#!/bin/bash
+
+# check_digitalocean Nagios plugin to check health of Digital Ocean droplets
+# Copyright (C) 2016 Michael Newton
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+name=$(basename "$0")
+usage="
+Usage:
+    $name [-t token] [-w <warning>] [-c <critical>] [-f]
+    $name -h
+
+    -t token            DigitalOcean API token, will use ~/.doctlcfg if not supplied
+    -w warning          Warning threshold for inactive droplets;
+                            specify count (e.g. 4) or percent (e.g. 25%)
+    -c critical         Critical threshold for inactive droplets;
+                            specify count (e.g. 4) or percent (e.g. 25%)
+    -f                  Output performance data
+    -h                  Help (print command usage and quit)
+"
+
+# set some defaults
+warning=0
+critical=1
+while getopts "t:w:c:fh" option; do
+	case "$option" in
+		t) token="$OPTARG";;
+		w) warning="$OPTARG";;
+		c) critical="$OPTARG";;
+		f) generate_perf_data=1;;
+		h) echo "$usage" && exit 3;;
+	esac
+done
+
+if [[ -z "$token" ]] && [[ ! -e "~/.doctlcfg" ]]; then
+	echo "UNKNOWN - No token specified, and could not find ~/.doctlcfg"
+	exit 3
+fi
+
+# The full list
+droplets=$(doctl compute droplet list)
+ret1=$?
+# Account details
+account=$(doctl account get)
+ret2=$?
+
+if [[ $ret1 -ne 0 ]] || [[ $ret2 -ne 0 ]]; then
+	echo "UNKNOWN - Error running doctl"
+	exit 3
+fi
+
+# Droplet count: offline/total=percentage
+offdrops=$(echo "$droplets" | awk 'BEGIN{a=0}NR>1&&/off$/{a+=1}END{printf "%d/%d=%d", a, NR - 1, (a/(NR-1))*100}')
+offcount=${offdrops%/*}
+totalcount=${offdrops%=*}
+totalcount=${totalcount#*/}
+offpercent=${offdrops#*=}
+# Account status
+acctstat=$(echo "$account" | awk 'NR>1{print $5}')
+
+exitcode=1
+
+if [[ $warning == *% ]] && [[ $offpercent -ge ${warning%\%} ]]; then
+	exitcode=2
+elif [[ $warning != *% ]] && [[ $offcount -ge $warning ]]; then
+	exitcode=2
+elif [[ $acctstat == "warning" ]]; then
+	exitcode=2
+fi
+
+if [[ $critical == *% ]] && [[ $offpercent -ge ${critical%\%} ]]; then
+	exitcode=1
+elif [[ $critical != *% ]] && [[ $offcount -ge $critical ]]; then
+	exitcode=1
+elif [[ $acctstat == "locked" ]]; then
+	exitcode=1
+fi
+
+case exitcode in
+0)
+	result="OK"
+	;;
+1)
+	result="CRITICAL"
+	;;
+2)
+	result="WARNING"
+	;;
+3)
+	result="UNKNOWN"
+	;;
+esac
+
+printf "%s - %d droplets in off state - %d droplets total" "$result" "$offcount" "$totalcount"
+if [[ $generate_perf_data > 0 ]]; then
+	printf " | offline_droplets=%d total_droplets=%d" "$result" "$offcount" "$totalcount" "$offcount" "$totalcount"
+fi
+echo
+
+exit $exitcode
