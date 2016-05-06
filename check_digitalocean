@@ -59,25 +59,24 @@ fi
 PATH="$HOME/bin:/usr/local/bin:/usr/local/sbin:$PATH"
 cmd=$(which "$cmd" &2> /dev/null)
 if [[ -z $cmd ]]; then
-    echo "UNKNOWN - Could not find doctl in $PATH"
-    exit 3
+	echo "UNKNOWN - Could not find doctl in $PATH"
+	exit 3
+else
+	cmd=("$cmd")
 fi
 
 if [[ ! -z $token ]]; then
-	params=(-t "$token")
-else
-	params=()
+	params+=("-t" "$token")
 fi
-cmd=($cmd $params)
 
 # The full list
-droplets=$($cmd compute droplet list)
+droplets=$("${cmd[@]}" compute droplet list)
 ret1=$?
 [[ $debug > 0 ]] && echo "Output of $cmd compute droplet list:" >&2
 [[ $debug > 0 ]] && echo "$droplets" >&2
 
 # Account details
-account=$($cmd account get)
+account=$("${cmd[@]}" account get)
 ret2=$?
 [[ $debug > 0 ]] && echo "Output of $cmd account get:" >&2
 [[ $debug > 0 ]] && echo "$account" >&2
