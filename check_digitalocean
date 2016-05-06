@@ -72,14 +72,14 @@ fi
 # The full list
 droplets=$("${cmd[@]}" compute droplet list)
 ret1=$?
-[[ $debug > 0 ]] && echo "Output of $cmd compute droplet list:" >&2
-[[ $debug > 0 ]] && echo "$droplets" >&2
+[[ $debug -gt 0 ]] && echo "Output of ${cmd[*]} compute droplet list:" >&2
+[[ $debug -gt 0 ]] && echo "$droplets" >&2
 
 # Account details
 account=$("${cmd[@]}" account get)
 ret2=$?
-[[ $debug > 0 ]] && echo "Output of $cmd account get:" >&2
-[[ $debug > 0 ]] && echo "$account" >&2
+[[ $debug -gt 0 ]] && echo "Output of ${cmd[*]} account get:" >&2
+[[ $debug -gt 0 ]] && echo "$account" >&2
 
 if [[ $ret1 -ne 0 ]] || [[ $ret2 -ne 0 ]]; then
 	echo "UNKNOWN - Error running doctl"
@@ -98,24 +98,24 @@ acctstat=$(echo "$account" | awk 'NR>1{print $5}')
 exitcode=0
 
 if [[ $warning == *% ]] && [[ $offpercent -ge ${warning%\%} ]]; then
-	[[ $debug > 0 ]] && echo "Exceeded warning percentage!" >&2
+	[[ $debug -gt 0 ]] && echo "Exceeded warning percentage!" >&2
 	exitcode=2
 elif [[ $warning != *% ]] && [[ $offcount -ge $warning ]]; then
-	[[ $debug > 0 ]] && echo "Exceeded warning value!" >&2
+	[[ $debug -gt 0 ]] && echo "Exceeded warning value!" >&2
 	exitcode=2
 elif [[ $acctstat == "warning" ]]; then
-	[[ $debug > 0 ]] && echo "Account status warning!" >&2
+	[[ $debug -gt 0 ]] && echo "Account status warning!" >&2
 	exitcode=2
 fi
 
 if [[ $critical == *% ]] && [[ $offpercent -ge ${critical%\%} ]]; then
-	[[ $debug > 0 ]] && echo "Exceeded critical percentage!" >&2
+	[[ $debug -gt 0 ]] && echo "Exceeded critical percentage!" >&2
 	exitcode=1
 elif [[ $critical != *% ]] && [[ $offcount -ge $critical ]]; then
-	[[ $debug > 0 ]] && echo "Exceeded critical value!" >&2
+	[[ $debug -gt 0 ]] && echo "Exceeded critical value!" >&2
 	exitcode=1
 elif [[ $acctstat == "locked" ]]; then
-	[[ $debug > 0 ]] && echo "Account status locked!" >&2
+	[[ $debug -gt 0 ]] && echo "Account status locked!" >&2
 	exitcode=1
 fi
 
@@ -135,7 +135,7 @@ case $exitcode in
 esac
 
 printf "%s - %d droplets in off state - %d droplets total - account status %s" "$result" "$offcount" "$totalcount" "$acctstat"
-if [[ $generate_perf_data > 0 ]]; then
+if [[ $generate_perf_data -gt 0 ]]; then
 	printf " | offline_droplets=%d total_droplets=%d" "$offcount" "$totalcount"
 fi
 echo
