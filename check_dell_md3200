@@ -348,7 +348,7 @@ if ($health) {
 if ($battery) {
     $battFails = array();
     foreach ($pbBatt as $batt) {
-        if ($batt["s"] != "Optimal") {
+        if ($batt["s"] != "Optimal" && $batt["s"] != "Battery maintenance charging") {
             $battFails[] = $batt["l"];
         }
     }
