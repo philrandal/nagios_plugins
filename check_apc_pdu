@@ -1,0 +1,143 @@
+#!/bin/bash
+
+# check_apc_pdu Nagios plugin to check health of APC PDU (tested on AP7900)
+# Copyright (C) 2016 Michael Newton
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+name=$(basename "$0")
+usage="
+Usage:
+    $name -H <hostname> [-2] [-p <port>] [-C <community>] [-t transport] [-w <warning>] [-c <critical>] [-f]
+    $name -H <hostname> -3 -l <secName> [-t transport] [-L <protocolList>] [-x <authPassword>]
+        [-X <privPassword>] [-w <warning>] [-c <critical>] [-f]
+    $name -h
+
+    -H hostname         Hostname
+    -p port             SNMP port
+    -C community        SNMP version 1/2c community (default public)
+    -2                  Use SNMP version 2c (default 1)
+    -3                  Use SNMP version 3 (default 1)
+    -t transport        SNMP transport (udp, tcp, udp6, tcp6; default udp)
+    -l secName          SNMP v3 username
+    -L protocolList     SNMP v3 authentication, privacy protocols (default md5,des)
+    -x authPassword     SNMP v3 authentication password
+    -X privPassword     SNMP v3 privacy password
+    -w warning          Warning threshold for CPU (%) checks
+    -c critical         Critical threshold for CPU (%) checks
+    -f                  Output performance data
+    -h                  Help (print command usage and quit)
+"
+
+# set some defaults
+version="1"
+community="public"
+port="161"
+protocols="md5,des"
+transport="udp"
+snmp_opts=()
+message=""
+ext_message=""
+exit="0"
+generate_perf_data="0"
+perf_data=""
+snmpget="/usr/bin/snmpget"
+snmpwalk="/usr/bin/snmpwalk"
+
+while getopts "H:p:C:23l:L:x:X:w:c:fh" option; do
+	case $option in
+		H) hostname=$OPTARG;;
+		p) port=$OPTARG;;
+		2) version=2c;;
+		3) version=3;;
+		C) community=$OPTARG;;
+		l) secName=$OPTARG;;
+		L) protocols=$OPTARG;;
+		x) authPassword=$OPTARG;;
+		X) privPassword=$OPTARG;;
+		w) warning=$OPTARG;;
+		c) critical=$OPTARG;;
+		f) generate_perf_data=1;;
+		h) echo "$usage" && exit 3;;
+	esac
+done
+
+if [[ -z "$hostname" ]]
+then
+	echo "Unknown: Missing hostname or mode parameter"
+	echo "$usage"
+	exit 3
+fi
+
+if [[ "$version" = "3" ]]; then
+	if [[ -z "$secName" ]]; then
+		echo "Unknown: Missing SNMP v3 security name"
+		echo "$usage"
+		exit 3
+	fi
+	snmp_opts=(${snmp_opts[@]} "-v" "$version" "-u" "$secName")
+	if [[ -z "$authPassword" ]]; then
+		secLevel="NoAuthNoPriv"
+	else
+		authProtocol=${protocols%,*}
+		privProtocol=${protocols#*,}
+		if [[ -z "$privPassword" ]]; then
+			secLevel="AuthNoPriv"
+		else
+			secLevel="AuthPriv"
+			snmp_opts=(${snmp_opts[@]} "-x" "$privProtocol" "-X" "$privPassword")
+		fi
+		snmp_opts=(${snmp_opts[@]} "-l" "$secLevel" "-a" "$authProtocol" "-A" "$authPassword")
+	fi
+	snmp_opts=(${snmp_opts[@]} "$transport:$hostname:$port")
+else
+	if [[ -z "$community" ]]; then
+		echo "Unknown: Missing community parameter"
+		echo "$usage"
+		exit 3
+	fi
+	snmp_opts=(${snmp_opts[@]} "-v" "$version" "-c" "$community" "$transport:$hostname:$port")
+fi
+
+
+if [[ -z "$warning" ]] || [[ -z "$critical" ]]; then
+	echo "Error - Missing warning or critical thresholds"
+	echo "$usage"
+	exit 3
+fi
+
+check_mib=".1.3.6.1.4.1.318.1.1.12.2.3.1.1.2.1"
+check_name="Load"
+check_unit="A"
+metric=$($snmpget -OeqvU "${snmp_opts[@]}" "$check_mib" 2> /dev/null)
+if [[ "$metric" =~ [^0-9] ]] || [[ -z "$metric" ]]; then
+	message=$(printf 'Unknown: %s' "$metric")
+	exit=3
+elif [[ $metric -ge $critical ]]; then
+	message=$(printf 'Critical: %s %d%s' "$check_name" "$metric" "$check_unit")
+	exit=2
+elif [[ $metric -ge $warning ]]; then
+	message=$(printf 'Warning: %s %d%s' "$check_name" "$metric" "$check_unit")
+	exit=1
+else
+	message=$(printf 'OK: %s %d%s' "$check_name" "$metric" "$check_unit");
+	exit=0
+fi
+perf_data=$(printf '%s=%d%s;%d;%d' "${check_name/ /_}" "$metric" "$check_unit" "$warning" "$critical")
+
+[[ $generate_perf_data = 1 ]] && echo "$message|$perf_data" || echo "$message"
+echo "$ext_message"
+
+exit $exit
