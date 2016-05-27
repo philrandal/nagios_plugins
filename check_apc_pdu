@@ -150,9 +150,9 @@ if [[ $status == "Unknown" ]]; then
 else
     metric=$(echo "scale=1; $metric / 10" | bc)
 	if [[ $generate_perf_data = 1 ]]; then 
-		printf "%s: %s %d%s|%s=%d%s;%d;%d" "$status" "$check_name" "$metric" "$check_unit" "${check_name/ /_}" "$metric" "$check_unit" "$warning" "$critical"
+		printf "%s: %s %0.1f%s|%s=%0.1f;%0.1f;%0.1f" "$status" "$check_name" "$metric" "$check_unit" "${check_name/ /_}" "$metric" "$warning" "$critical"
 	else
-		printf "%s: %s %d%s" "$status" "$check_name" "$metric" "$check_unit"
+		printf "%s: %s %0.1f%s" "$status" "$check_name" "$metric" "$check_unit"
 	fi
 fi
 
