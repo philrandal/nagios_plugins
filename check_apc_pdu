@@ -49,7 +49,6 @@ protocols="md5,des"
 transport="udp"
 snmp_opts=()
 message=""
-ext_message=""
 exit="0"
 generate_perf_data="0"
 perf_data=""
@@ -116,6 +115,9 @@ if [[ -z "$warning" ]] || [[ -z "$critical" ]]; then
 	echo "Error - Missing warning or critical thresholds"
 	echo "$usage"
 	exit 3
+else
+	# can't do bash math in case we get a float
+	read warn10 crit10 <<< $(echo "$warning * 10;$critical * 10" | bc)
 fi
 
 check_mib=".1.3.6.1.4.1.318.1.1.12.2.3.1.1.2.1"
@@ -123,21 +125,28 @@ check_name="Load"
 check_unit="A"
 metric=$($snmpget -OeqvU "${snmp_opts[@]}" "$check_mib" 2> /dev/null)
 if [[ "$metric" =~ [^0-9] ]] || [[ -z "$metric" ]]; then
-	message=$(printf 'Unknown: %s' "$metric")
+    status="Unknown"
 	exit=3
-elif [[ $metric -ge $critical ]]; then
-	message=$(printf 'Critical: %s %d%s' "$check_name" "$metric" "$check_unit")
+elif [[ $metric -ge $crit10 ]]; then
+    status="Critical"
 	exit=2
-elif [[ $metric -ge $warning ]]; then
-	message=$(printf 'Warning: %s %d%s' "$check_name" "$metric" "$check_unit")
+elif [[ $metric -ge $warn10 ]]; then
+    status="Warning"
 	exit=1
 else
-	message=$(printf 'OK: %s %d%s' "$check_name" "$metric" "$check_unit");
+    status="OK"
 	exit=0
 fi
-perf_data=$(printf '%s=%d%s;%d;%d' "${check_name/ /_}" "$metric" "$check_unit" "$warning" "$critical")
 
-[[ $generate_perf_data = 1 ]] && echo "$message|$perf_data" || echo "$message"
-echo "$ext_message"
+if [[ $status == "Unknown" ]]; then
+	printf "%s: %s %s" "$status" "$check_name" "$metric"
+else
+    metric=$(echo "scale=1; $metric / 10" | bc)
+	if [[ $generate_perf_data = 1 ]]; then 
+		printf "%s: %s %d%s|%s=%d%s;%d;%d" "$status" "$check_name" "$metric" "$check_unit" "${check_name/ /_}" "$metric" "$check_unit" "$warning" "$critical"
+	else
+		printf "%s: %s %d%s" "$status" "$check_name" "$metric" "$check_unit"
+	fi
+fi
 
 exit $exit
