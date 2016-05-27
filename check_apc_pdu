@@ -52,9 +52,10 @@ exit="0"
 generate_perf_data="0"
 debug="0"
 snmpget="/usr/bin/snmpget"
-snmp_opts=()
-warnmib=".1.3.6.1.4.1.318.1.1.12.2.2.1.1.3.1"
-critmib=".1.3.6.1.4.1.318.1.1.12.2.2.1.1.4.1"
+snmp_opts="-OeqvU"
+snmp_cmd=("$snmpget" "$snmp_opts")
+warn_oid=".1.3.6.1.4.1.318.1.1.12.2.2.1.1.3.1"
+crit_oid=".1.3.6.1.4.1.318.1.1.12.2.2.1.1.4.1"
 
 while getopts "H:p:C:23l:L:x:X:w:c:fdh" option; do
 	case $option in
@@ -88,7 +89,7 @@ if [[ "$version" = "3" ]]; then
 		echo "$usage"
 		exit 3
 	fi
-	snmp_opts=(${snmp_opts[@]} "-v" "$version" "-u" "$secName")
+	snmp_cmd=(${snmp_cmd[@]} "-v" "$version" "-u" "$secName")
 	if [[ -z "$authPassword" ]]; then
 		secLevel="NoAuthNoPriv"
 	else
@@ -98,34 +99,38 @@ if [[ "$version" = "3" ]]; then
 			secLevel="AuthNoPriv"
 		else
 			secLevel="AuthPriv"
-			snmp_opts=(${snmp_opts[@]} "-x" "$privProtocol" "-X" "$privPassword")
+			snmp_cmd=(${snmp_cmd[@]} "-x" "$privProtocol" "-X" "$privPassword")
 		fi
-		snmp_opts=(${snmp_opts[@]} "-l" "$secLevel" "-a" "$authProtocol" "-A" "$authPassword")
+		snmp_cmd=(${snmp_cmd[@]} "-l" "$secLevel" "-a" "$authProtocol" "-A" "$authPassword")
 	fi
-	snmp_opts=(${snmp_opts[@]} "$transport:$hostname:$port")
+	snmp_cmd=(${snmp_cmd[@]} "$transport:$hostname:$port")
 else
 	if [[ -z "$community" ]]; then
 		echo "Unknown: Missing community parameter"
 		echo "$usage"
 		exit 3
 	fi
-	snmp_opts=(${snmp_opts[@]} "-v" "$version" "-c" "$community" "$transport:$hostname:$port")
+	snmp_cmd=(${snmp_cmd[@]} "-v" "$version" "-c" "$community" "$transport:$hostname:$port")
 fi
 
 
 if [[ -z "$warning" ]] || [[ -z "$critical" ]]; then
-	read warn10 crit10 <<< $($snmpget -OeqvU "${snmp_opts[@]}" "$warnmib" "$critmib" 2> /dev/null)
+	[[ $debug -gt 0 ]] && printf "Running command: %s %s\n" "${snmp_cmd[*]}" "$warn_oid" "$crit_oid"
+	read warn10 crit10 <<< $("${snmp_cmd[@]}" "$warn_oid" "$crit_oid" 2> /dev/null)
+	[[ $debug -gt 0 ]] && printf "Returned %d\n" $?
 	read warning critical <<< $(echo "scale 1; $warn10 / 10; $crit10 / 10" | bc)
-	[[ $debug -gt 0 ]] && printf "No warning or critical thresholds supplied, retrieved %d and %d via SNMP" "$warning" "$critical"
+	[[ $debug -gt 0 ]] && printf "Retrieved warning and critical thresholds %d and %d via SNMP\n" "$warning" "$critical"
 else
 	# can't do bash math in case we get a float
 	read warn10 crit10 <<< $(echo "$warning * 10;$critical * 10" | bc)
 fi
 
-check_mib=".1.3.6.1.4.1.318.1.1.12.2.3.1.1.2.1"
+check_oid=".1.3.6.1.4.1.318.1.1.12.2.3.1.1.2.1"
 check_name="Load"
 check_unit="A"
-metric=$($snmpget -OeqvU "${snmp_opts[@]}" "$check_mib" 2> /dev/null)
+[[ $debug -gt 0 ]] && printf "Running command: %s %s\n" "${snmp_cmd[*]}" "$check_oid"
+metric=$("${snmp_cmd[@]}" "$check_oid" 2> /dev/null)
+[[ $debug -gt 0 ]] && printf "Returned %d\n" $?
 if [[ "$metric" =~ [^0-9] ]] || [[ -z "$metric" ]]; then
     status="Unknown"
 	exit=3
