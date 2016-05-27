@@ -20,9 +20,9 @@
 name=$(basename "$0")
 usage="
 Usage:
-    $name -H <hostname> [-2] [-p <port>] [-C <community>] [-t transport] [-w <warning>] [-c <critical>] [-f]
+    $name -H <hostname> [-2] [-p <port>] [-C <community>] [-t transport] [-w <warning>] [-c <critical>] [-f] [-d]
     $name -H <hostname> -3 -l <secName> [-t transport] [-L <protocolList>] [-x <authPassword>]
-        [-X <privPassword>] [-w <warning>] [-c <critical>] [-f]
+        [-X <privPassword>] [-w <warning>] [-c <critical>] [-f] [-d]
     $name -h
 
     -H hostname         Hostname
@@ -38,6 +38,7 @@ Usage:
     -w warning          Warning threshold for CPU (%) checks
     -c critical         Critical threshold for CPU (%) checks
     -f                  Output performance data
+	-d                  Output debug data
     -h                  Help (print command usage and quit)
 "
 
@@ -47,15 +48,15 @@ community="public"
 port="161"
 protocols="md5,des"
 transport="udp"
-snmp_opts=()
-message=""
 exit="0"
 generate_perf_data="0"
-perf_data=""
+debug="0"
 snmpget="/usr/bin/snmpget"
-snmpwalk="/usr/bin/snmpwalk"
+snmp_opts=()
+warnmib=".1.3.6.1.4.1.318.1.1.12.2.2.1.1.3.1"
+critmib=".1.3.6.1.4.1.318.1.1.12.2.2.1.1.4.1"
 
-while getopts "H:p:C:23l:L:x:X:w:c:fh" option; do
+while getopts "H:p:C:23l:L:x:X:w:c:fdh" option; do
 	case $option in
 		H) hostname=$OPTARG;;
 		p) port=$OPTARG;;
@@ -69,6 +70,7 @@ while getopts "H:p:C:23l:L:x:X:w:c:fh" option; do
 		w) warning=$OPTARG;;
 		c) critical=$OPTARG;;
 		f) generate_perf_data=1;;
+		d) debug=1;;
 		h) echo "$usage" && exit 3;;
 	esac
 done
@@ -112,9 +114,9 @@ fi
 
 
 if [[ -z "$warning" ]] || [[ -z "$critical" ]]; then
-	echo "Error - Missing warning or critical thresholds"
-	echo "$usage"
-	exit 3
+	read warn10 crit10 <<< $($snmpget -OeqvU "${snmp_opts[@]}" "$warnmib" "$critmib" 2> /dev/null)
+	read warning critical <<< $(echo "scale 1; $warn10 / 10; $crit10 / 10" | bc)
+	[[ $debug -gt 0 ]] && printf "No warning or critical thresholds supplied, retrieved %d and %d via SNMP" "$warning" "$critical"
 else
 	# can't do bash math in case we get a float
 	read warn10 crit10 <<< $(echo "$warning * 10;$critical * 10" | bc)
