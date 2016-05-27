@@ -353,7 +353,7 @@ if ($battery) {
     ];
     $battFails = array();
     foreach ($pbBatt as $batt) {
-        if (!in_array($batt["s"], $ok_status) {
+        if (!in_array($batt["s"], $ok_status)) {
             $battFails[] = $batt["l"];
         }
     }
