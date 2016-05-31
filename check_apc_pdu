@@ -117,7 +117,8 @@ fi
 if [[ ! $warning =~ ^[0-9]+$ ]] || [[ ! $critical =~ ^[0-9]+$ ]]; then
 	[[ $debug -gt 0 ]] && printf "Running command: %s %s %s\n" "${snmp_cmd[*]}" "$warn_oid" "$crit_oid"
 	read -d "\n" warning critical <<< $("${snmp_cmd[@]}" "$warn_oid" "$crit_oid" 2> /dev/null)
-	[[ $debug -gt 0 ]] && printf "Returned %d\n" $?
+	stat=$?
+	[[ $debug -gt 0 ]] && printf "Returned %d\n" $stat
 	[[ $debug -gt 0 ]] && printf "Retrieved warning and critical thresholds %d and %d via SNMP\n" "$warning" "$critical"
 fi
 
@@ -129,8 +130,9 @@ check_name="Load"
 check_unit="A"
 [[ $debug -gt 0 ]] && printf "Running command: %s %s\n" "${snmp_cmd[*]}" "$check_oid"
 metric=$("${snmp_cmd[@]}" "$check_oid" 2> /dev/null)
-[[ $debug -gt 0 ]] && printf "Returned %d\n" $?
-if [[ "$metric" =~ [^0-9] ]] || [[ -z "$metric" ]]; then
+stat=$?
+[[ $debug -gt 0 ]] && printf "Returned %d\n" $stat
+if [[ "$metric" =~ [^0-9] ]] || [[ -z "$metric" ]] || [[ $stat != 0 ]]; then
     status="Unknown"
 	exit=3
 elif [[ $metric -ge $crit10 ]]; then
