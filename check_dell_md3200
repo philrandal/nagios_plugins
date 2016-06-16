@@ -341,7 +341,7 @@ if ($health) {
     }
     if ($failures) {
         set_exit(WARNING, "component failures");
-        $infos[] = "Failures: $failinfo";
+        $infos[] = "Failures: $failInfo";
     }
 }
 
