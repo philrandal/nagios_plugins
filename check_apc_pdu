@@ -35,10 +35,10 @@ Usage:
     -L protocolList     SNMP v3 authentication, privacy protocols (default md5,des)
     -x authPassword     SNMP v3 authentication password
     -X privPassword     SNMP v3 privacy password
-    -w warning          Warning threshold for CPU (%) checks
-    -c critical         Critical threshold for CPU (%) checks
+    -w warning          Warning amperage threshold (specified in dA)
+    -c critical         Critical amperage threshold (specified in dA)
     -f                  Output performance data
-	-d                  Output debug data
+    -d                  Output debug data
     -h                  Help (print command usage and quit)
 "
 
@@ -115,11 +115,18 @@ fi
 
 
 if [[ ! $warning =~ ^[0-9]+$ ]] || [[ ! $critical =~ ^[0-9]+$ ]]; then
+	[[ $debug -gt 0 ]] && printf "No warning or critical threshold specified, fetching from device\n"
 	[[ $debug -gt 0 ]] && printf "Running command: %s %s %s\n" "${snmp_cmd[*]}" "$warn_oid" "$crit_oid"
 	read -d "\n" warning critical <<< $("${snmp_cmd[@]}" "$warn_oid" "$crit_oid" 2> /dev/null)
 	stat=$?
 	[[ $debug -gt 0 ]] && printf "Returned %d\n" $stat
 	[[ $debug -gt 0 ]] && printf "Retrieved warning and critical thresholds %d and %d via SNMP\n" "$warning" "$critical"
+fi
+
+if [[ $warning -lt 1 ]] || [[ $critical -lt 1 ]]; then
+       printf "Invalid warning (%d) or critical (%d) thresholds supplied or retrieved!\n" "$warning" "$critical"
+       echo "$usage"
+       exit 3
 fi
 
 # can't do bash math in case we get a float
