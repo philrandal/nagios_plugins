@@ -19,6 +19,8 @@
 
 use POSIX;
 use strict;
+use IO::Handle;
+use File::Temp qw(tempfile);
 use Getopt::Long qw(:config no_ignore_case);
 use Time::HiRes qw(gettimeofday tv_interval);
 
@@ -45,7 +47,8 @@ my $command = "";
 my $t0;
 my $elapsed;
 my @avstrings;
-my $avstring;
+my $avhand;
+my $avfile;
 my $errindex;
 my %ERRORS = ('OK'=>0,'WARNING'=>1,'CRITICAL'=>2,'UNKNOWN'=>3,'DEPENDENT'=>4);
 
@@ -71,20 +74,21 @@ if (!$request_type) {
     show_usage(2);
 }
 
+($avhand, $avfile) = tempfile(UNLINK => 1);
 while (my($key, $val) = each %avpairs) {
-    push(@avstrings, "$key=$val");
+    print $avhand sprintf("%s=%s\n", $key, $val);
 }
-$avstring = join(",", @avstrings);
+close($avhand);
 
 if ($debug) {
     print STDERR sprintf(
-        "DEBUG: Parsed config: request_type = %s, host = %s:%d (IPv%d), timeout = %d, secret = %s, avpair = \"%s\", radclient_binary = %s, warn_thresh = %d, crit_thresh = %d, debug = %d\n",
-        $request_type, $host, $port, $ipmode, $timeout, $secret, $avstring, $radclient_binary, $warn_thresh, $crit_thresh, $debug
+        "DEBUG: Parsed config: request_type = %s, host = %s:%d (IPv%d), timeout = %d, secret = %s, avfile = %s, radclient_binary = %s, warn_thresh = %d, crit_thresh = %d, debug = %d\n",
+        $request_type, $host, $port, $ipmode, $timeout, $secret, $avfile, $radclient_binary, $warn_thresh, $crit_thresh, $debug
     );
 }
 
 if ( $request_type eq "auth" || $request_type eq "acct" || $request_type eq "status") {
-    $command = "printf '%q' '$avstring' | $radclient_binary -$ipmode -q -c $send_count -r $retries -t $timeout $host:$port $request_type $secret";
+    $command = "$radclient_binary -$ipmode -q -f $avfile -c $send_count -r $retries -t $timeout $host:$port $request_type $secret";
     if ($debug) {
         print STDERR sprintf("DEBUG: radclient command to send: %s\n", $command);
     }
@@ -97,7 +101,7 @@ $t0 = [gettimeofday()];
 system($command);
 $elapsed = tv_interval($t0);
 
-if ($elapsed >= $crit_thresh || $? != 0) {
+if ($elapsed >= $crit_thresh && $? == 0) {
     $errindex = "CRITICAL";
 } elsif ($elapsed < $warn_thresh && $? == 0) {
     $errindex = "OK";
