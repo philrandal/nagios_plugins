@@ -1,15 +1,28 @@
 #!/usr/bin/perl -w
 
-# based VERY loosely on a script called "check_freeradius.pl" found without a license at
-# https://exchange.nagios.org/directory/Plugins/*-Plugin-Development-Tools/check_freeradius-2Epl/details
-
+# check_radclient
+# Copyright (C) 2019 Michael Newton
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 use POSIX;
 use strict;
 use Getopt::Long qw(:config no_ignore_case);
 use Time::HiRes qw(gettimeofday tv_interval);
 
-my $script = "check_freeradius.pl";
+my $script = "check_radclient";
 my $version = "2.0";
 
 # default values
@@ -26,6 +39,15 @@ my $send_count = 1;
 my $warn_thresh = 3;
 my $crit_thresh = 7;
 my $debug = 0;
+
+# misc variables
+my $command = "";
+my $t0;
+my $elapsed;
+my @avstrings;
+my $avstring;
+my $errindex;
+my %ERRORS = ('OK'=>0,'WARNING'=>1,'CRITICAL'=>2,'UNKNOWN'=>3,'DEPENDENT'=>4);
 
 GetOptions (
     "f|function=s" => \$request_type,
@@ -49,55 +71,47 @@ if (!$request_type) {
     show_usage(2);
 }
 
-###################################
-### Other Variables here    ###
-###################################
-my $command = "";
-my $t0;
-my $elapsed;
-my @avstrings;
-my $avstring;
-my $status;
-
-my %ERRORS = ('OK'=>0,'WARNING'=>1,'CRITICAL'=>2,'UNKNOWN'=>3,'DEPENDENT'=>4);
-
 while (my($key, $val) = each %avpairs) {
     push(@avstrings, "$key=$val");
 }
 $avstring = join(",", @avstrings);
 
+if ($debug) {
+    print STDERR sprintf(
+        "DEBUG: Parsed config: request_type = %s, host = %s:%d (IPv%d), timeout = %d, secret = %s, avpair = \"%s\", radclient_binary = %s, warn_thresh = %d, crit_thresh = %d, debug = %d\n",
+        $request_type, $host, $port, $ipmode, $timeout, $secret, $avstring, $radclient_binary, $warn_thresh, $crit_thresh, $debug
+    );
+}
+
 if ( $request_type eq "auth" || $request_type eq "acct" || $request_type eq "status") {
-    $command = ("printf '%q' '$avstring' | $radclient_binary -$ipmode -q -c $send_count -r $retries -t $timeout $host:$port $request_type $secret");
+    $command = "printf '%q' '$avstring' | $radclient_binary -$ipmode -q -c $send_count -r $retries -t $timeout $host:$port $request_type $secret";
     if ($debug) {
-        printf("DEBUG: Using config request_type = $request_type, host = $host:$port (IPv$ipmode), timeout = $timeout, secret = $secret, avpair = \"$avstring\", radclient_binary = $radclient_binary, warn_thresh = $warn_thresh, crit_thresh = $crit_thresh, debug = $debug\n");
-        printf("DEBUG: radclient command to send: $command\n");
+        print STDERR sprintf("DEBUG: radclient command to send: %s\n", $command);
     }
 } else {
-    printf("ERROR: Unknown functions, please read help for instructions on how to use this program");
+    print STDERR sprintf("ERROR: Unknown function %s passed, must be one of auth, acct, or status.", $request_type);
     show_usage(2);
 }
 
-$t0 = [gettimeofday];
+$t0 = [gettimeofday()];
 system($command);
 $elapsed = tv_interval($t0);
 
-if ( ($elapsed >= $crit_thresh) || ($? !=0) ) {
-    $status = $ERRORS{'CRITICAL'};
-    printf("CRITICAL: Radius response time: $elapsed secs, warning threshold: $warn_thresh, critical threshold: $crit_thresh, radclient exit status: $?, $script exit STATUS: $status.");
-    exit $status;
-} elsif ( ($elapsed < $warn_thresh ) ) {
-    $status = $ERRORS{'OK'};
-    printf("OK: Radius response time: $elapsed secs, warning threshold: $warn_thresh, critical threshold: $crit_thresh, radclient exit status: $?, $script exit STATUS: $status.");
-    exit $status;
-} elsif ( ($elapsed >= $warn_thresh) ) {
-    $status = $ERRORS{'WARNING'};
-    printf("WARNING: Radius response time: $elapsed secs, warning threshold: $warn_thresh, critical threshold: $crit_thresh, radclient exit status: $?, $script exit STATUS: $status.");
-    exit $status;
+if ($elapsed >= $crit_thresh || $? != 0) {
+    $errindex = "CRITICAL";
+} elsif ($elapsed < $warn_thresh && $? == 0) {
+    $errindex = "OK";
+} elsif ($elapsed >= $warn_thresh && $? == 0) {
+    $errindex = "WARNING";
 } else {
-    $status = $ERRORS{'UNKNOWN'};
-    printf("CRITICAL: Radius response time: $elapsed secs, warning threshold: $warn_thresh, critical threshold: $crit_thresh, radclient exit status: $?, $script exit STATUS: $status.");
-    exit $status;
+    $errindex = "UNKNOWN";
 }
+
+printf(
+    "%s: Radius response time: %d secs, warning threshold: %d, critical threshold: %d, radclient exit code: %d, %s exit code: %s.",
+    $errindex, $elapsed, $warn_thresh, $crit_thresh, $? >> 8, $script, $ERRORS{$errindex}
+);
+exit $ERRORS{$errindex};
 
 sub show_usage
 {
@@ -137,12 +151,12 @@ Usage: $script [OPTIONS]
 
 Examples:
 
-    ./$script -f auth -host 10.10.10.1 -port 1812 -t 8 -s testing123 \
-        -a User-Name=alex -a NAS-Port-Id=pw-285 -a NAS-IP-Address=10.10.10.1 \
+    ./$script -f auth --host 10.20.30.40 --port 1812 -t 8 -s testing123 \
+        -a User-Name=joe -a User-Password=pass -a NAS-IP-Address=192.168.0.9 \
         -c /usr/local/freeradius/bin/radclient -W 5 -C 10 -d
 
-    ./$script --function status --host 192.168.34.2 --port 1812 --timeout 8 \
-        --secret testing123 --client /usr/local/bin/radclient --crit 8 --debug
+    ./$script --function status --host 172.16.12.6 --port 1812 --timeout 8 \
+        --secret 'secret!' --client /usr/local/bin/radclient --crit 8 --debug
 
     ./$script --help
 
