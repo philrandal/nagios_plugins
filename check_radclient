@@ -40,7 +40,7 @@ my $retries = 1;
 my $send_count = 1;
 my $warn_thresh = 3;
 my $crit_thresh = 7;
-my $debug = 0;
+our $debug = 0;
 
 # misc variables
 my $command = "";
@@ -74,26 +74,23 @@ if (!$request_type) {
     show_usage(2);
 }
 
-($avhand, $avfile) = tempfile(UNLINK => 1);
+($avhand, $avfile) = tempfile(UNLINK => $debug ? 0 : 1);
+print_debug("File %s will not be removed at program exit", $avfile);
 while (my($key, $val) = each %avpairs) {
     print $avhand sprintf("%s=%s\n", $key, $val);
 }
 close($avhand);
 
-if ($debug) {
-    print STDERR sprintf(
-        "DEBUG: Parsed config: request_type = %s, host = %s:%d (IPv%d), timeout = %d, secret = %s, avfile = %s, radclient_binary = %s, warn_thresh = %d, crit_thresh = %d, debug = %d\n",
-        $request_type, $host, $port, $ipmode, $timeout, $secret, $avfile, $radclient_binary, $warn_thresh, $crit_thresh, $debug
-    );
-}
+print_debug(
+    "Parsed config: request_type = %s, host = %s:%d (IPv%d), timeout = %d, secret = %s, avfile = %s, radclient_binary = %s, warn_thresh = %d, crit_thresh = %d, debug = %d",
+    $request_type, $host, $port, $ipmode, $timeout, $secret, $avfile, $radclient_binary, $warn_thresh, $crit_thresh, $debug
+);
 
 if ( $request_type eq "auth" || $request_type eq "acct" || $request_type eq "status") {
     $command = "$radclient_binary -$ipmode -q -f $avfile -c $send_count -r $retries -t $timeout $host:$port $request_type $secret";
-    if ($debug) {
-        print STDERR sprintf("DEBUG: radclient command to send: %s\n", $command);
-    }
+    print_debug("radclient command to send: %s", $command);
 } else {
-    print STDERR sprintf("ERROR: Unknown function %s passed, must be one of auth, acct, or status.", $request_type);
+    print_err("Unknown function %s passed, must be one of auth, acct, or status.", $request_type);
     show_usage(2);
 }
 
@@ -116,6 +113,24 @@ printf(
     $errindex, $elapsed, $warn_thresh, $crit_thresh, $? >> 8, $script, $ERRORS{$errindex}
 );
 exit $ERRORS{$errindex};
+
+sub print_debug
+{
+    if ($main::debug) {
+        my $fmt = shift;
+        my $blue = "\033[1;34m";
+        my $reset = "\033[0m";
+        print STDERR sprintf($blue . "DEBUG: " . $reset . $fmt . "\n", @_);
+    }
+}
+
+sub print_err
+{
+    my $fmt = shift;
+    my $red = "\033[1;31m";
+    my $reset = "\033[0m";
+    print STDERR sprintf($red . "ERROR: " . $reset . $fmt . "\n", @_);
+}
 
 sub show_usage
 {
