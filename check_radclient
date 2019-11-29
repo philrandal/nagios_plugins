@@ -120,7 +120,7 @@ printf(
 );
 
 if ($perfdata) {
-    printf("'radinterval'=%0.4fs;%d;%d", $elapsed, $warn_thresh, $crit_thresh);
+    printf("|'radinterval'=%0.4fs;%d;%d", $elapsed, $warn_thresh, $crit_thresh);
 }
 
 print "\n";
