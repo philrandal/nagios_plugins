@@ -21,7 +21,7 @@ use POSIX;
 use strict;
 use IO::Handle;
 use File::Temp qw(tempfile);
-use Getopt::Long qw(:config no_ignore_case);
+use Getopt::Long qw(:config no_ignore_case bundling);
 use Time::HiRes qw(gettimeofday tv_interval);
 
 my $script = "check_radclient";
@@ -40,10 +40,13 @@ my $retries = 1;
 my $send_count = 1;
 my $warn_thresh = 3;
 my $crit_thresh = 7;
+my $perfdata = 0;
 our $debug = 0;
+our $verbose = 0;
 
 # misc variables
 my $command = "";
+my $cmd_output = "";
 my $t0;
 my $elapsed;
 my @avstrings;
@@ -60,13 +63,15 @@ GetOptions (
     "t|timeout:8" => \$timeout,
     "s|secret:s" => \$secret,
     "a|avpair:s" => \%avpairs,
-    "c|client:s" => \$radclient_binary,
+    "b|binary:s" => \$radclient_binary,
     "r|retries:1" => \$retries,
     "u|count:1" => \$send_count,
-    "W|warn:3" => \$warn_thresh,
-    "C|crit:7" => \$crit_thresh,
+    "F|perf" => sub{ $perfdata = 1 },
+    "w|warning:3" => \$warn_thresh,
+    "c|critical:7" => \$crit_thresh,
     "d|debug" => \$debug,
-    "V|version" => sub{ printf("$version\n"); exit 1; },
+    "v|verbose" => sub{ $verbose++ },
+    "V|version" => sub{ printf("%s v%s\n", $script, $version); exit 1; },
     "help" => sub{ show_usage(); },
 );
 
@@ -96,7 +101,7 @@ if ( $request_type eq "auth" || $request_type eq "acct" || $request_type eq "sta
 }
 
 $t0 = [gettimeofday()];
-system($command);
+$cmd_output = `$command`;
 $elapsed = tv_interval($t0);
 
 if ($elapsed >= $crit_thresh && $? == 0) {
@@ -110,14 +115,24 @@ if ($elapsed >= $crit_thresh && $? == 0) {
 }
 
 printf(
-    "%s: Radius response time: %d secs, warning threshold: %d, critical threshold: %d, radclient exit code: %d, %s exit code: %s.",
-    $errindex, $elapsed, $warn_thresh, $crit_thresh, $? >> 8, $script, $ERRORS{$errindex}
+    "%s: Radius response time: %d secs, radclient exit code: %d",
+    $errindex, $elapsed, $? >> 8
 );
+
+if ($perfdata) {
+    printf("'radinterval'=%0.4fs;%d;%d", $elapsed, $warn_thresh, $crit_thresh);
+}
+
+print "\n";
+
+if ($verbose > 1) {
+    printf("radclient output: %s", $cmd_output);
+}
 exit $ERRORS{$errindex};
 
 sub print_debug
 {
-    if ($main::debug) {
+    if ($main::debug || $main::verbose > 2) {
         my $fmt = shift;
         my $blue = "\033[1;34m";
         my $reset = "\033[0m";
@@ -151,32 +166,38 @@ Usage: $script [OPTIONS]
     -H, --host=SERVER       connect to SERVER (default localhost)
     -p, --port=port         connect to UDP port port (default 1812)
     -6, --ipv6              connect using IPv6
-    -s, --secret=SECRET     use shared secret SECRET (default is empty string)
+    -s, --secret=SECRET     use shared secret SECRET (default empty string)
     -t, --timeout=SECS      timeout after SECS seconds (default 10)
     -r, --retries=NUM       retry NUM times on failure or timeout (default 1)
-    -u, --count=NUM         send each packet NUM times (default 1)
+    -C, --count=NUM         send each packet NUM times (default 1)
 
  Request options:
     -a, --avpair=ATTR=VAL   define an attribute/value pair for the request
-                            (default Message-Authenticator=0x00)
+                             (default Message-Authenticator=0x00)
+
+ Nagios options:
+    -w, --warning=SECS      return warning if request takes more than SECS s
+                             (default 3)
+    -c, --critical=SECS     return critical if request takes more than SECS s
+                             (default 7)
+    -F, --perfdata          include performance data in output
 
  Other options:
-    -c, --client=CLIENT     path to radclient if needed
-    -W, --warn=SECS         return warning if request takes more than SECS s
-                            (default 3)
-    -C, --critical=SECS     return critical if request takes more than SECS s
-                            (default 7)
+    -b, --binary=CLIENT     path to radclient if needed
+                             (default /usr/bin/radclient)
+    -v, --verbose           increase verbosity
+    -d, --debug             enable debugging output (equivalent to -vvv)
     -h, --help              show usage information
-    -d, --debug             enable debugging output
+    -V, --version           show version information
 
 Examples:
 
     ./$script -f auth --host 10.20.30.40 --port 1812 -t 8 -s testing123 \
         -a User-Name=joe -a User-Password=pass -a NAS-IP-Address=192.168.0.9 \
-        -c /usr/local/freeradius/bin/radclient -W 5 -C 10 -d
+        -b /usr/local/freeradius/bin/radclient -w 5 -c 10 -d
 
     ./$script --function status --host 172.16.12.6 --port 1812 --timeout 8 \
-        --secret 'secret!' --client /usr/local/bin/radclient --crit 8 --debug
+        --secret 'secret!' --binary /usr/local/bin/radclient --critical 8
 
     ./$script --help
 
