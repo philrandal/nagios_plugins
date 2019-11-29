@@ -77,7 +77,8 @@ if (!$request_type) {
 ($avhand, $avfile) = tempfile(UNLINK => $debug ? 0 : 1);
 print_debug("File %s will not be removed at program exit", $avfile);
 while (my($key, $val) = each %avpairs) {
-    print $avhand sprintf("%s=%s\n", $key, $val);
+    $val =~ s/'/\\'/g;
+    print $avhand sprintf("%s='%s'\n", $key, $val);
 }
 close($avhand);
 
@@ -156,7 +157,7 @@ Usage: $script [OPTIONS]
     -u, --count=NUM         send each packet NUM times (default 1)
 
  Request options:
-    -a, --avpair=ATTR=VAL   define attribute/value pairs for the request
+    -a, --avpair=ATTR=VAL   define an attribute/value pair for the request
                             (default Message-Authenticator=0x00)
 
  Other options:
