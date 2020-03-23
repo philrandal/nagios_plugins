@@ -1,0 +1,133 @@
+#!/bin/bash
+
+# check_asterisk_channels Nagios plugin to check Asterisk channel usage
+# Copyright (C) 2020 Michael Newton
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+name=$(basename "$0")
+oid=.1.3.6.1.4.1.22736.1.5.2
+
+usage="
+Usage:
+    $name -H <host> [-H <host>...] [-F <filter> [-d <field>]] [-w <warning>] [-c <critical>] [-f]
+    $name -h
+
+    -H host             The host to check; values from multiple hosts will be added together
+    -C comm             The SNMP community
+    -F filter           If provided, only table entries with a regex match to the filter expression
+    -i field            If provided, the filter expression will only be checked against this
+                            one-based field number
+    -w warning          Warning threshold for used channel count
+    -c critical         Critical threshold for used channel count
+    -f                  Output performance data
+    -d                  Debug to STDERR
+    -h                  Help (print command usage and quit)
+"
+
+# set some defaults
+declare -a hosts
+community=public
+filter=""
+field=0
+warning=5
+critical=10
+debug=0
+while getopts "H:C:F:i:w:c:fdh" option; do
+	case "$option" in
+		H) hosts+=( "$OPTARG" );;
+		C) community="$OPTARG";;
+		F) filter="$OPTARG";;
+		i) field="$OPTARG";;
+		w) warning="$OPTARG";;
+		c) critical="$OPTARG";;
+		f) generate_perf_data=1;;
+		d) debug=1;;
+		h) echo "$usage" && exit 3;;
+	esac
+done
+
+if [[ ${#hosts[@]} -eq 0 ]]; then
+	printf "UNKNOWN - No host specified\n"
+	exit 3
+fi
+[[ $debug -gt 0 ]] && printf "Polling %d hosts: %s\n" "${#hosts[@]}" "${hosts[*]}" >&2
+
+if [[ ! "$field" =~ ^[0-9]+$ ]]; then
+	printf "UNKNOWN - Field must be a number\n"
+	exit 3
+fi
+
+cmd1=snmptable
+declare -a args1=( "-c" "$community" "-Cf" "^" "-CH" )
+cmd2=wc
+declare -a args2=( "-l" )
+
+if [[ -n "$filter" ]]; then
+	cmd2=awk
+	if [[ $field -gt 0 ]]; then
+		awk=$(printf "{if (match(\$%d, /%s/)) c+=1}" "$field" "$filter")
+	else
+		awk=$(printf "/%s/{c=+1}" "$filter")
+	fi
+	awk+=" END{print c}"
+	args2=( "-F" "^" "-v" "c=0" "$awk" )
+fi
+
+usage=0
+for host in "${hosts[@]}"; do
+	[[ $debug -gt 0 ]] && printf "Running command:\n%s %s %s %s | %s %s\n" \
+		"$cmd1" "${args1[*]}" "$host" "$oid" "$cmd2" "${args2[*]}" >&2
+	temp=$($cmd1 "${args1[@]}" "$host" "$oid" | $cmd2 "${args2[@]}")
+	if [[ -z "$temp" ]]; then
+		printf "UNKNOWN - No response\n";
+		exit 3
+	fi
+	[[ $debug -gt 0 ]] && printf "Result: %s\n" "$temp"
+	usage=$(( usage + temp ))
+done
+	
+exitcode=0
+
+if [[ $usage -ge $critical ]]; then
+	[[ $debug -gt 0 ]] && printf "Exceeded critical percentage!\n" >&2
+	exitcode=1
+elif [[ $usage -ge $warning ]]; then
+	[[ $debug -gt 0 ]] && printf "Exceeded warning value!\n" >&2
+	exitcode=2
+fi
+
+case $exitcode in
+0)
+	result="OK"
+	;;
+1)
+	result="CRITICAL"
+	;;
+2)
+	result="WARNING"
+	;;
+3)
+	result="UNKNOWN"
+	;;
+esac
+
+printf "%s - %d channels in use" "$result" "$usage"
+if [[ $generate_perf_data -gt 0 ]]; then
+	printf " | channel_usage=%d" "$usage"
+fi
+echo
+
+exit $exitcode
