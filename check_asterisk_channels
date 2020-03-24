@@ -29,6 +29,7 @@ Usage:
     -C comm             The SNMP community
     -F filter           If provided, only table entries with a regex match to the filter expression
                             will be counted
+    -n                  Negates the filter command (i.e. count only table entries that do not match)
     -i field            If provided, the filter expression will only be checked against this
                             one-based field number
     -w warning          Warning threshold for used channel count
@@ -42,15 +43,17 @@ Usage:
 declare -a hosts
 community=public
 filter=""
+negate=""
 field=0
 warning=5
 critical=10
 debug=0
-while getopts "H:C:F:i:w:c:fdh" option; do
+while getopts "H:C:F:ni:w:c:fdh" option; do
 	case "$option" in
 		H) hosts+=( "$OPTARG" );;
 		C) community="$OPTARG";;
 		F) filter="$OPTARG";;
+		n) negate="!";;
 		i) field="$OPTARG";;
 		w) warning="$OPTARG";;
 		c) critical="$OPTARG";;
@@ -78,12 +81,7 @@ declare -a args2=( "-l" )
 
 if [[ -n "$filter" ]]; then
 	cmd2=awk
-	if [[ $field -gt 0 ]]; then
-		awk=$(printf "{if (match(\$%d, /%s/)) c+=1}" "$field" "$filter")
-	else
-		awk=$(printf "/%s/{c+=1}" "$filter")
-	fi
-	awk+=" END{print c}"
+	awk=$(printf "{if (%smatch(\$%d, /%s/)) c+=1} END{print c}" "$negate" "$field" "$filter")
 	args2=( "-F" "^" "-v" "c=0" "$awk" )
 fi
 
