@@ -28,6 +28,7 @@ Usage:
     -H host             The host to check; values from multiple hosts will be added together
     -C comm             The SNMP community
     -F filter           If provided, only table entries with a regex match to the filter expression
+                            will be counted
     -i field            If provided, the filter expression will only be checked against this
                             one-based field number
     -w warning          Warning threshold for used channel count
@@ -80,7 +81,7 @@ if [[ -n "$filter" ]]; then
 	if [[ $field -gt 0 ]]; then
 		awk=$(printf "{if (match(\$%d, /%s/)) c+=1}" "$field" "$filter")
 	else
-		awk=$(printf "/%s/{c=+1}" "$filter")
+		awk=$(printf "/%s/{c+=1}" "$filter")
 	fi
 	awk+=" END{print c}"
 	args2=( "-F" "^" "-v" "c=0" "$awk" )
