@@ -35,6 +35,10 @@ object CheckCommand "radiuscheck" {
 			value = "$radius_avpairs$"
 			repeat_key = true
 		}
+		"-A" = {
+			value = "$radius_binpairs$"
+			repeat_key = true
+		}
 		"-F" = {
 			set_if = "$radius_perfdata$"
 		}
