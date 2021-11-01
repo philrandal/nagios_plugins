@@ -25,7 +25,7 @@ use Getopt::Long qw(:config no_ignore_case bundling);
 use Time::HiRes qw(gettimeofday tv_interval);
 
 my $script = "check_radclient";
-my $version = "2.0";
+my $version = "2.1";
 
 # default values
 my $request_type;
@@ -35,6 +35,7 @@ my $ipmode = 4;
 my $timeout = 10;
 my $secret = "";
 my %avpairs = ("Message-Authenticator" => "0x00");
+my %binary_avpairs;
 my $radclient_binary = "/usr/bin/radclient";
 my $retries = 1;
 my $send_count = 1;
@@ -63,6 +64,7 @@ GetOptions (
     "t|timeout:8" => \$timeout,
     "s|secret:s" => \$secret,
     "a|avpair:s" => \%avpairs,
+    "A|binpair:s" => \%binary_avpairs,
     "b|binary:s" => \$radclient_binary,
     "r|retries:1" => \$retries,
     "u|count:1" => \$send_count,
@@ -85,6 +87,11 @@ while (my($key, $val) = each %avpairs) {
     $val =~ s/'/\\'/g;
     print $avhand sprintf("%s='%s'\n", $key, $val);
 }
+while (my($key, $val) = each %binary_avpairs) {
+    $val =~ s/[^0-9a-f]//ig;
+    print $avhand sprintf("%s=0x%s\n", $key, $val);
+}
+
 close($avhand);
 
 print_debug(
@@ -174,6 +181,8 @@ Usage: $script [OPTIONS]
  Request options:
     -a, --avpair=ATTR=VAL   define an attribute/value pair for the request
                              (default Message-Authenticator=0x00)
+    -A, --binpair=ATTR=VAL  define a binary attribute/value pair for the request
+                             the value should be hex bytes (e.g. '0106c3a899')
 
  Nagios options:
     -w, --warning=SECS      return warning if request takes more than SECS s
