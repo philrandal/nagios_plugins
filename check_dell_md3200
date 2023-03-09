@@ -4,7 +4,7 @@
 $progname = "check_dell_md3200";
 $version = "1.0";
 //base path for the smcli client
-$smcli = getenv("SMCLI_PATH") ?: "/opt/dell/mdstoragesoftware/mdstoragemanager/client/SMcli";
+$smcli = getenv("SMCLI_PATH") ?: "/opt/dell/mdstoragemanager/client/SMcli";
 
 //Exit codes
 define("OK", 0);
@@ -38,11 +38,13 @@ $debug = isset($opts["debug"]) || isset($opts["debug-no"]);
 $md3000 = isset($opts["md3000"]);
 $ping = !isset($opts["no-ping-check"]);
 $stats = isset($opts["stats"]);
+$statistics=[];
 
 $battery = isset($opts["battery"]) || isset($opts["health"]);
 $power = (isset($opts["power"]) || isset($opts["health"])) && !isset($opts["md3000"]);
 $sectors = isset($opts["sectors"]) || isset($opts["health"]);
-$hotspare = isset($opts["hotspare"]) || isset($opts["health"]);
+//$hotspare = isset($opts["hotspare"]) || isset($opts["health"]);
+$hotspare = isset($opts["hotspare"]);
 $health = isset($opts["health"]);
 
 $otot = isset($opts["only-totals"]);
